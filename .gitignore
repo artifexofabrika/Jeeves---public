@@ -1,0 +1,24 @@
+# Credentials and tokens
+credentials.json
+token.pickle
+.env
+trading_skill.py
+jeeves_telegram.py
+
+# Logs and mirror
+mirror.log
+trading_mirror.log
+*.log
+
+# Lake data
+/mnt/lake/
+
+# LLM models
+llama.cpp/models/
+
+# Python virtual environments
+.venv/
+
+# System files that are not ours
+*.pyc
+__pycache__/

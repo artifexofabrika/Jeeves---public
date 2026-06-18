@@ -1,0 +1,13 @@
+[Unit]
+Description=Jeeves Telegram and Lake services
+After=llama-server.service
+Wants=llama-server.service
+
+[Service]
+Type=forking
+User=drinrin
+ExecStart=/home/drinrin/start_jeeves_services.sh
+Restart=no
+
+[Install]
+WantedBy=multi-user.target

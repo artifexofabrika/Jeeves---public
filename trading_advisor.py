@@ -1,0 +1,179 @@
+import requests, json, os, datetime, time, sys, re
+
+LLM_URL = "http://localhost:8080/v1/chat/completions"
+ALPACA_BASE = "https://paper-api.alpaca.markets"
+API_KEY = None
+SECRET_KEY = None
+STRATEGY_FILE = os.path.expanduser("~/trading_strategy.txt")
+MIRROR_LOG = os.path.expanduser("~/trading_mirror.log")
+MAX_DAILY_TRADES = 2
+MAX_ORDER_VALUE = 5000
+TELEGRAM_BOT_TOKEN = None
+CHAT_ID = None
+
+# Load Alpaca keys from trading_skill.py
+try:
+    import trading_skill
+    API_KEY = trading_skill.API_KEY
+    SECRET_KEY = trading_skill.SECRET_KEY
+except:
+    print("Error: trading_skill.py not found or missing keys.")
+    sys.exit(1)
+
+# Safely read Telegram credentials from the bridge file without executing it
+bridge_path = os.path.expanduser("~/jeeves_telegram.py")
+if os.path.exists(bridge_path):
+    with open(bridge_path, "r") as f:
+        bridge_text = f.read()
+        token_match = re.search(r'BOT_TOKEN\s*=\s*"([^"]+)"', bridge_text)
+        chat_match = re.search(r'CHAT_ID\s*=\s*(\d+)', bridge_text)
+        if token_match:
+            TELEGRAM_BOT_TOKEN = token_match.group(1)
+        if chat_match:
+            CHAT_ID = int(chat_match.group(1))
+
+def alpaca_headers():
+    return {
+        "APCA-API-KEY-ID": API_KEY,
+        "APCA-API-SECRET-KEY": SECRET_KEY,
+        "Content-Type": "application/json"
+    }
+
+def get_account():
+    resp = requests.get(f"{ALPACA_BASE}/v2/account", headers=alpaca_headers())
+    return resp.json() if resp.ok else {}
+
+def get_positions():
+    resp = requests.get(f"{ALPACA_BASE}/v2/positions", headers=alpaca_headers())
+    return resp.json() if resp.ok else []
+
+def get_bars(symbol, days=5):
+    end = datetime.datetime.now().isoformat() + "Z"
+    start = (datetime.datetime.now() - datetime.timedelta(days=days+1)).isoformat() + "Z"
+    resp = requests.get(
+        f"{ALPACA_BASE}/v2/stocks/{symbol}/bars",
+        headers=alpaca_headers(),
+        params={"timeframe": "1D", "start": start, "end": end, "limit": days+1}
+    )
+    return resp.json().get("bars", []) if resp.ok else []
+
+def place_order(symbol, qty, side):
+    data = {"symbol": symbol, "qty": qty, "side": side, "type": "market", "time_in_force": "day"}
+    resp = requests.post(f"{ALPACA_BASE}/v2/orders", json=data, headers=alpaca_headers())
+    return resp.json() if resp.ok else {"error": resp.text}
+
+def log(message):
+    timestamp = datetime.datetime.now().isoformat()
+    with open(MIRROR_LOG, "a") as f:
+        f.write(f"{timestamp} | {message}\n")
+    print(message)
+
+def send_telegram(message):
+    if TELEGRAM_BOT_TOKEN and CHAT_ID:
+        try:
+            requests.post(f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
+                          json={"chat_id": CHAT_ID, "text": message})
+        except:
+            pass
+
+def main():
+    log("=== Trading Advisor Run ===")
+    
+    if not os.path.exists(STRATEGY_FILE):
+        log("Error: Strategy file not found.")
+        return
+    with open(STRATEGY_FILE, 'r') as f:
+        strategy = f.read()
+    
+    account = get_account()
+    positions = get_positions()
+    cash = float(account.get("cash", 0))
+    portfolio_value = float(account.get("portfolio_value", 0))
+    
+    data_summary = f"Cash: ${cash:.2f}\nPortfolio value: ${portfolio_value:.2f}\n\n"
+    if positions:
+        data_summary += "Current positions:\n"
+        for pos in positions:
+            data_summary += f"- {pos['symbol']}: {pos['qty']} shares, avg entry ${pos['avg_entry_price']}, "
+            data_summary += f"current price ${pos['current_price']}, P/L ${pos['unrealized_pl']}\n"
+    else:
+        data_summary += "No current positions.\n"
+    
+    watchlist = list(set(re.findall(r'\b[A-Z]{1,5}\b', strategy)))
+    skip_words = {"I", "ETF", "SMA", "LLM", "API", "JSON", "P/L", "ID", "URL"}
+    watchlist = [w for w in watchlist if w not in skip_words]
+    
+    if watchlist:
+        data_summary += "\nRecent price action:\n"
+        for sym in watchlist[:5]:
+            bars = get_bars(sym, days=5)
+            if bars:
+                closes = [b['c'] for b in bars[-5:]]
+                data_summary += f"{sym}: last 5 closes: {closes}\n"
+    
+    prompt = f"""You are a disciplined trading advisor. Your role is to analyze the following data and the user's strategy, then produce a specific trade recommendation in JSON format.
+
+Strategy:
+{strategy}
+
+Current state:
+{data_summary}
+
+Based on the strategy and current data, what trade action do you recommend? Respond ONLY with a JSON object in this exact format:
+{{"action": "buy" or "sell" or "hold", "symbol": "TICKER", "quantity": integer, "rationale": "brief explanation"}}
+
+If you recommend no action, set action to "hold" and quantity to 0. Do not include any text outside the JSON."""
+    
+    try:
+        resp = requests.post(LLM_URL, json={
+            "model": "llama",
+            "messages": [{"role": "user", "content": prompt}],
+            "temperature": 0.2,
+            "max_tokens": 200
+        }, timeout=60)
+        if resp.ok:
+            reply = resp.json()["choices"][0]["message"]["content"]
+            log(f"LLM raw response: {reply}")
+            try:
+                json_start = reply.find('{')
+                json_end = reply.rfind('}') + 1
+                if json_start >= 0 and json_end > json_start:
+                    json_str = reply[json_start:json_end]
+                    rec = json.loads(json_str)
+                    action = rec.get("action", "hold")
+                    symbol = rec.get("symbol", "").upper()
+                    qty = int(rec.get("quantity", 0))
+                    rationale = rec.get("rationale", "")
+                    
+                    if action in ("buy", "sell") and qty > 0:
+                        today = datetime.date.today().isoformat()
+                        with open(MIRROR_LOG, 'r') as f:
+                            daily_trades = sum(1 for line in f if today in line and "Order placed" in line)
+                        if daily_trades >= MAX_DAILY_TRADES:
+                            log(f"Daily trade limit reached. Skipping {action} {symbol}.")
+                            return
+                        bars = get_bars(symbol, days=1)
+                        price = bars[-1]['c'] if bars else 0
+                        if price * qty > MAX_ORDER_VALUE:
+                            log(f"Order value exceeds limit. Skipping {action} {symbol}.")
+                            return
+                        
+                        order = place_order(symbol, qty, action)
+                        if "id" in order:
+                            log(f"Order executed: {action} {qty} {symbol} - {rationale}")
+                            send_telegram(f"Trading Advisor executed: {action.upper()} {qty} {symbol}. Rationale: {rationale}")
+                        else:
+                            log(f"Order failed: {order}")
+                    else:
+                        log(f"Recommendation: HOLD - {rationale}")
+                else:
+                    log("Could not parse JSON from LLM response.")
+            except (json.JSONDecodeError, ValueError) as e:
+                log(f"JSON parse error: {e}. Raw: {reply}")
+        else:
+            log(f"LLM request failed: {resp.status_code}")
+    except Exception as e:
+        log(f"Advisor error: {e}")
+
+if __name__ == "__main__":
+    main()

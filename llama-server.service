@@ -1,0 +1,14 @@
+[Unit]
+Description=LLaMA Server for Jeeves
+After=network.target
+
+[Service]
+Type=simple
+User=drinrin
+WorkingDirectory=/home/drinrin/llama.cpp/build/bin
+ExecStart=/home/drinrin/llama.cpp/build/bin/llama-server -m /home/drinrin/llama.cpp/models/Llama-3.2-1B-Instruct-Q4_K_M.gguf --host 0.0.0.0 --port 8080 --ctx-size 2048
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
