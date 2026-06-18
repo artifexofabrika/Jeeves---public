@@ -1,0 +1,9 @@
+I am a cautious crypto trader. My goal is to preserve capital and achieve steady small gains.
+Rules:
+- Trade only BTC/USD, ETH/USD, USDT/USD, LTC/USD, XRP/USD.
+- Buy when the price is at least 3% below its 20‑day moving average (simulated by recent price actions).
+- Sell if a position gains 5% or more, or if it falls 2% from entry.
+- Never risk more than 2% of the portfolio on a single trade.
+- Maximum 3 open positions.
+- Maximum 5 trades per day.
+- Paper trade only until the system demonstrates a positive return over 30 days.
