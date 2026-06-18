@@ -1,3 +1,5 @@
+import crypto_sim
+import crypto_skill
 import os, datetime, re, json
 from flask import Flask, render_template_string, request, jsonify
 import email_skill
@@ -107,6 +109,7 @@ HTML_TEMPLATE = """
                 <button class="btn" onclick="sendCommand('/trade positions')">📊 Positions</button>
                 <button class="btn" onclick="sendCommand('/mirror_read')">🪞 Mirror</button>
                 <button class="btn" onclick="sendCommand('/lake Toyota Way')">🌊 Lake</button>
+                <button class="btn" onclick="sendCommand('/crypto-sim account')">🪙 Crypto-Sim</button>
             </div>
             <h3>Command Output</h3>
             <div class="panel" id="cmdOutput">Awaiting command...</div>
@@ -285,7 +288,59 @@ def handle_command(user_input):
         return "What shall I search for, sir?"
     # Crypto (placeholder)
     elif cmd == "/crypto":
-        return "Crypto module will be available shortly, sir."
+        rest = parts[1] if len(parts) > 1 else ''
+        sub_parts = rest.split(maxsplit=1)
+        sub_cmd = sub_parts[0].lower() if sub_parts else ''
+        if sub_cmd == "account":
+            return crypto_skill.get_account()
+        elif sub_cmd == "positions":
+            return crypto_skill.get_positions()
+        elif sub_cmd == "buy":
+            args = sub_parts[1] if len(sub_parts) > 1 else ''
+            try:
+                symbol, qty = args.split()
+                return crypto_skill.place_order(symbol.upper(), float(qty), "buy")
+            except:
+                return "Usage: /crypto buy <symbol> <quantity>"
+        elif sub_cmd == "sell":
+            args = sub_parts[1] if len(sub_parts) > 1 else ''
+            try:
+                symbol, qty = args.split()
+                return crypto_skill.place_order(symbol.upper(), float(qty), "sell")
+            except:
+                return "Usage: /crypto sell <symbol> <quantity>"
+        elif sub_cmd == "price":
+            symbol = sub_parts[1] if len(sub_parts) > 1 else ''
+            return crypto_skill.get_price(symbol.upper()) if symbol else "Specify a symbol, sir."
+        else:
+            return "Available crypto commands: account, positions, buy, sell, price."
+    elif cmd == "/crypto-sim":
+        rest = parts[1] if len(parts) > 1 else ''
+        sub_parts = rest.split(maxsplit=1)
+        sub_cmd = sub_parts[0].lower() if sub_parts else ''
+        if sub_cmd == "account":
+            return crypto_sim.get_account()
+        elif sub_cmd == "positions":
+            return crypto_sim.get_positions()
+        elif sub_cmd == "buy":
+            args = sub_parts[1] if len(sub_parts) > 1 else ''
+            try:
+                symbol, qty = args.split()
+                return crypto_sim.place_order(symbol.upper(), float(qty), "buy")
+            except:
+                return "Usage: /crypto-sim buy <symbol> <quantity>"
+        elif sub_cmd == "sell":
+            args = sub_parts[1] if len(sub_parts) > 1 else ''
+            try:
+                symbol, qty = args.split()
+                return crypto_sim.place_order(symbol.upper(), float(qty), "sell")
+            except:
+                return "Usage: /crypto-sim sell <symbol> <quantity>"
+        elif sub_cmd == "price":
+            symbol = sub_parts[1] if len(sub_parts) > 1 else ''
+            return crypto_sim.get_price(symbol.upper()) if symbol else "Specify a symbol, sir."
+        else:
+            return "Available crypto-sim commands: account, positions, buy, sell, price."
     return None
 
 if __name__ == "__main__":
