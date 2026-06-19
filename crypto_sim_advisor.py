@@ -1,5 +1,15 @@
 import requests, json, os, datetime, time, sys, re
+VAULT_PATH = os.path.expanduser('~/crypto_sim_vault.json')
 import crypto_sim
+def load_vault():
+    if os.path.exists(VAULT_PATH):
+        with open(VAULT_PATH, 'r') as f:
+            return json.load(f)
+    return {"core_capital": 100.0, "secured_vault": 0.0}
+
+def save_vault(vault):
+    with open(VAULT_PATH, 'w') as f:
+        json.dump(vault, f)
 
 LLM_URL = "http://localhost:8080/v1/chat/completions"
 STRATEGY_FILE = os.path.expanduser("~/crypto_sim_strategy.txt")
@@ -52,6 +62,20 @@ def main():
     equity = float(equity_match.group(1)) if equity_match else 100.0
     cash_match = re.search(r'Cash: \$(\d+\.\d+)', account_info)
     cash = float(cash_match.group(1)) if cash_match else 100.0
+
+    # Load vault and apply ratchet
+    vault = load_vault()
+    core_capital = vault['core_capital']
+    secured_vault = vault['secured_vault']
+    if equity >= core_capital * 1.5:
+        gain = equity - core_capital
+        new_core = core_capital + gain * 0.5
+        new_secured = secured_vault + gain * 0.5
+        vault = {"core_capital": new_core, "secured_vault": new_secured}
+        save_vault(vault)
+        log(f"Ratchet triggered: core capital increased to ${new_core:.2f}, secured vault now ${new_secured:.2f}")
+        core_capital = new_core
+        secured_vault = new_secured
     
     data_summary = f"Cash: ${cash:.2f}\nEquity: ${equity:.2f}\n\n"
     data_summary += positions_info

@@ -106,7 +106,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 <div id="tab-lake" class="panel" style="display: none;">Loading...</div>
                 <div id="tab-crypto" class="panel" style="display: none;">Loading...</div>
                 <div id="tab-cryptostrat" class="panel" style="display: none;">
-                    <div id="cryptoStratSummary" style="max-height: 150px; overflow-y: auto;">Loading strategy...</div>
+                    <div id="cryptoVaultDisplay" style="max-height: 60px; overflow-y: auto; margin-bottom: 0.5rem;">Loading vault...</div>
+                <div id="cryptoStratSummary" style="max-height: 150px; overflow-y: auto;">Loading strategy...</div>
                     <div id="cryptoStratFeedback" style="max-height: 150px; overflow-y: auto;">No recent feedback.</div>
                     <div class="btn-group" style="margin-top: 0.5rem;">
                         <button class="btn" onclick="refineCryptoStrat()">✨ Refine Strategy</button>
@@ -481,6 +482,13 @@ def handle_command(user_input):
                 return f.read().strip()
         except:
             return "No strategy file found."
+    elif cmd == "/crypto-vault":
+        try:
+            with open(os.path.expanduser("~/crypto_sim_vault.json"), "r") as f:
+                vault = json.load(f)
+            return f"Core Capital: ${vault['core_capital']:.2f}, Secured Vault: ${vault['secured_vault']:.2f}"
+        except:
+            return "Vault data unavailable."
     elif cmd == "/crypto-strat_apply":
         try:
             fb_path = os.path.expanduser("~/crypto_strategy_feedback.log")
