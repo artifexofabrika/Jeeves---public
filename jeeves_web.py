@@ -79,6 +79,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 <button class="tab active" onclick="showTab('mirror')">🪞 Mirror</button>
                 <button class="tab" onclick="showTab('lake')">🌊 Lake</button>
                 <button class="tab" onclick="showTab('crypto')">🪙 Crypto-Sim</button>
+                <button class="tab" onclick="showTab('cryptostrat')">📈 Crypto Strat</button>
             </div>
             <div class="tab-content">
                 <div id="tab-email" class="panel" style="display: none;"></div>
@@ -104,6 +105,16 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 </div>
                 <div id="tab-lake" class="panel" style="display: none;">Loading...</div>
                 <div id="tab-crypto" class="panel" style="display: none;">Loading...</div>
+                <div id="tab-cryptostrat" class="panel" style="display: none;">
+                    <div id="cryptoStratSummary" style="max-height: 150px; overflow-y: auto;">Loading strategy...</div>
+                    <div id="cryptoStratFeedback" style="max-height: 150px; overflow-y: auto;">No recent feedback.</div>
+                    <div class="btn-group" style="margin-top: 0.5rem;">
+                        <button class="btn" onclick="refineCryptoStrat()">✨ Refine Strategy</button>
+                        <button class="btn" onclick="saveCryptoStrat()">💾 Save Baseline</button>
+                        <button class="btn" onclick="reloadCryptoStrat()">📂 Reload Baseline</button>
+                        <button class="btn" onclick="factoryResetCryptoStrat()">⚠️ Factory Reset</button>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -442,6 +453,98 @@ def handle_command(user_input):
             return crypto_sim.get_price(symbol.upper()) if symbol else "Specify a symbol, sir."
         else:
             return "Available crypto-sim commands: account, positions, buy, sell, price."
+    elif cmd == "/crypto-strat":
+        try:
+            with open(os.path.expanduser("~/crypto_strategy_feedback.log"), "r") as f:
+                pending = f.readlines()
+            if len(pending) >= 3:
+                return "The Crypto Strategy Mirror is full (3 entries). Please refine or discard."
+        except:
+            pass
+        if len(parts) > 1:
+            note = parts[1]
+            timestamp = datetime.datetime.now().isoformat()
+            with open(os.path.expanduser("~/crypto_strategy_feedback.log"), "a") as f:
+                f.write(f"{timestamp} | {note}\n")
+            return "Noted, sir. Your feedback has been logged in the Crypto Strategy Mirror."
+        return "What feedback do you have for the crypto strategy?"
+    elif cmd == "/crypto-strat_read":
+        try:
+            with open(os.path.expanduser("~/crypto_strategy_feedback.log"), "r") as f:
+                lines = [line.strip() for line in f.readlines()[-3:] if line.strip()]
+            return json.dumps(lines)
+        except:
+            return "[]"
+    elif cmd == "/crypto-strat_summary":
+        try:
+            with open(os.path.expanduser("~/crypto_sim_strategy.txt"), "r") as f:
+                return f.read().strip()
+        except:
+            return "No strategy file found."
+    elif cmd == "/crypto-strat_apply":
+        try:
+            fb_path = os.path.expanduser("~/crypto_strategy_feedback.log")
+            strat_path = os.path.expanduser("~/crypto_sim_strategy.txt")
+            with open(fb_path, "r") as f:
+                entries = f.readlines()
+            if not entries:
+                return "No feedback to apply."
+            all_fb = "\n".join([e.strip().split(" | ",1)[-1] for e in entries if " | " in e])
+            current = open(strat_path).read().strip()
+            prompt = f"Revise this crypto trading strategy based on the feedback. Current strategy:\n{current}\n\nFeedback:\n{all_fb}\n\nOutput ONLY the revised strategy text, no commentary."
+            resp = requests.post(LLM_URL, json={
+                "model": "llama",
+                "messages": [{"role":"user","content":prompt}],
+                "temperature":0.7,"max_tokens":400
+            }, timeout=60)
+            if resp.ok:
+                new_strat = resp.json()["choices"][0]["message"]["content"].strip()
+                with open(strat_path, "w") as f:
+                    f.write(new_strat)
+                with open(fb_path, "w") as f:
+                    f.write("")
+                return f"Strategy refined, sir. New strategy saved."
+            else:
+                return "I am unable to refine the strategy at the moment."
+        except Exception as e:
+            return f"Error: {e}"
+    elif cmd == "/crypto-strat_save":
+        try:
+            import shutil
+            shutil.copy(os.path.expanduser("~/crypto_sim_strategy.txt"), os.path.expanduser("~/crypto_sim_strategy_default.txt"))
+            return "Current strategy saved as your personal baseline."
+        except Exception as e:
+            return f"Error saving baseline: {e}"
+    elif cmd == "/crypto-strat_reload":
+        try:
+            def_path = os.path.expanduser("~/crypto_sim_strategy_default.txt")
+            if os.path.exists(def_path):
+                import shutil
+                shutil.copy(def_path, os.path.expanduser("~/crypto_sim_strategy.txt"))
+                return "Your saved baseline has been restored."
+            else:
+                return "No saved baseline found."
+        except Exception as e:
+            return f"Error reloading baseline: {e}"
+    elif cmd == "/crypto-strat_factory_reset":
+        factory = """I am a cautious crypto trader. My goal is to preserve capital and achieve steady small gains.
+Rules:
+- Trade only BTC/USD, ETH/USD, USDT/USD, LTC/USD, XRP/USD.
+- Buy when the price is at least 3% below its 20‑day moving average (simulated by recent price actions).
+- Sell if a position gains 5% or more, or if it falls 2% from entry.
+- Never risk more than 2% of the portfolio on a single trade.
+- Maximum 3 open positions.
+- Maximum 5 trades per day.
+- Paper trade only until the system demonstrates a positive return over 30 days."""
+        try:
+            with open(os.path.expanduser("~/crypto_sim_strategy.txt"), "w") as f:
+                f.write(factory)
+            def_path = os.path.expanduser("~/crypto_sim_strategy_default.txt")
+            if os.path.exists(def_path):
+                os.remove(def_path)
+            return "Factory strategy restored. Any saved baseline has been removed."
+        except Exception as e:
+            return f"Error: {e}"
     return None
 
 def ask_llm(question):
