@@ -26,8 +26,7 @@ def get_lake_last_search(query="good service"):
     except Exception as e:
         return f"Lake error: {e}"
 
-HTML_TEMPLATE = """
-<!DOCTYPE html>
+HTML_TEMPLATE = """<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -87,6 +86,14 @@ HTML_TEMPLATE = """
                 <div id="tab-positions" class="panel" style="display: none;"></div>
                 <div id="tab-mirror" class="panel" style="display: block;">
                     <div id="mirrorPersonaPanel" style="max-height: 120px; overflow-y: auto;">Loading persona...</div>
+                    <div id="mirrorEntriesPanel" style="max-height: 150px; overflow-y: auto;">No recent feedback.</div>
+                    <div class="btn-group" style="margin-top: 0.5rem;">
+                        <button class="btn" onclick="refinePersona()">✨ Refine Persona</button>
+                        <button class="btn" onclick="saveDefault()">💾 Save as Default</button>
+                        <button class="btn" onclick="reloadSaved()">📂 Reload Saved</button>
+                        <button class="btn" onclick="factoryReset()">⚠️ Factory Reset</button>
+                    </div>
+                </div>
                     <div id="mirrorEntriesPanel" style="max-height: 150px; overflow-y: auto;">No recent feedback.</div>
                     <div class="btn-group">
                         <button class="tab" onclick="mirrorApply()">✨ Apply</button>
@@ -178,71 +185,58 @@ HTML_TEMPLATE = """
 
         // === Mirror UI Functions ===
         async function loadMirrorPanel() {
-            const presp = await fetch('/command', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ command: '/persona' })
-            });
-            const pdata = await presp.json();
-            document.getElementById('mirrorPersonaPanel').textContent = pdata.reply || 'No persona.';
-            const eresp = await fetch('/command', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ command: '/mirror_read' })
-            });
-            const edata = await eresp.json();
             try {
-                const entries = JSON.parse(edata.reply);
-                document.getElementById('mirrorEntriesPanel').textContent = entries.length ? entries.join('\\n') : 'No entries.';
+                const presp = await fetch('/command', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ command: '/persona' })
+                });
+                const pdata = await presp.json();
+                document.getElementById('mirrorPersonaPanel').textContent = pdata.reply || 'No persona.';
             } catch(e) {
-                document.getElementById('mirrorEntriesPanel').textContent = edata.reply || 'No entries.';
+                document.getElementById('mirrorPersonaPanel').textContent = 'Error loading persona.';
+            }
+            try {
+                const eresp = await fetch('/command', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ command: '/mirror_read' })
+                });
+                const edata = await eresp.json();
+                const entries = JSON.parse(edata.reply);
+                document.getElementById('mirrorEntriesPanel').textContent = entries.length ? entries.join(String.fromCharCode(10)) : 'No entries.';
+            } catch(e) {
+                document.getElementById('mirrorEntriesPanel').textContent = 'No recent feedback.';
             }
         }
-        async function mirrorApply() {
-            const resp = await fetch('/mirror_apply', { method: 'POST' });
+        async function refinePersona() {
+            document.getElementById('mirrorPersonaPanel').textContent = 'Refining persona...';
+            const resp = await fetch('http://192.168.232.100:5001/refine_persona', { method: 'POST' });
             const data = await resp.json();
             document.getElementById('mirrorPersonaPanel').textContent = data.reply;
-            loadMirrorPanel();
+            document.getElementById('mirrorEntriesPanel').textContent = 'No entries.';
         }
-        async function mirrorConfirm() {
-            const resp = await fetch('/mirror_confirm', { method: 'POST' });
+        async function saveDefault() {
+            const resp = await fetch('http://192.168.232.100:5001/save_default', { method: 'POST' });
+            const data = await resp.json();
+            alert(data.reply);
+        }
+        async function reloadSaved() {
+            document.getElementById('mirrorPersonaPanel').textContent = 'Restoring saved persona...';
+            const resp = await fetch('http://192.168.232.100:5001/reload_saved', { method: 'POST' });
             const data = await resp.json();
             document.getElementById('mirrorPersonaPanel').textContent = data.reply;
-            loadMirrorPanel();
+            document.getElementById('mirrorEntriesPanel').textContent = 'No entries.';
         }
-        async function mirrorCancel() {
-            const resp = await fetch('/mirror_cancel', { method: 'POST' });
+        async function factoryReset() {
+            if (!confirm('This will erase your current persona and any saved default. Are you sure?')) return;
+            document.getElementById('mirrorPersonaPanel').textContent = 'Restoring factory persona...';
+            const resp = await fetch('http://192.168.232.100:5001/factory_reset', { method: 'POST' });
             const data = await resp.json();
             document.getElementById('mirrorPersonaPanel').textContent = data.reply;
-            loadMirrorPanel();
+            document.getElementById('mirrorEntriesPanel').textContent = 'No entries.';
         }
-        async function mirrorReload() {
-            if (!confirm('This will erase all custom persona instructions and restore the original Jeeves voice. Are you sure?')) {
-                return;
-            }
-            const resp = await fetch('/mirror_reload', { method: 'POST' });
-            const data = await resp.json();
-            document.getElementById('mirrorPersonaPanel').textContent = data.reply;
-            loadMirrorPanel();
-        }
-        async function mirrorApply() {
-            const resp = await fetch('/mirror_apply', { method: 'POST' });
-            const data = await resp.json();
-            document.getElementById('mirrorPersonaPanel').textContent = data.reply;
-            loadMirrorPanel();
-        }
-        async function mirrorConfirm() {
-            const resp = await fetch('/mirror_confirm', { method: 'POST' });
-            const data = await resp.json();
-            document.getElementById('mirrorPersonaPanel').textContent = data.reply;
-            loadMirrorPanel();
-        }
-        async function mirrorCancel() {
-            const resp = await fetch('/mirror_cancel', { method: 'POST' });
-            const data = await resp.json();
-            document.getElementById('mirrorPersonaPanel').textContent = data.reply;
-            loadMirrorPanel();
-        }
+
         window.onload = function() {
             showTab('mirror');
         };
@@ -344,7 +338,7 @@ def handle_command(user_input):
             with open(MIRROR_LOG, "r") as f:
                 pending = f.readlines()
             if len(pending) >= 3:
-                return "The Mirror is full (3 entries). Please use /mirror_apply to refine your persona or /mirror_cancel to discard the pending feedback."
+                return "The Mirror is full (3 entries). Please use the Refine Persona button on the Mirror tab, or perform a Factory Reset to discard all pending feedback."
         except:
             pass
         if len(parts) > 1:
@@ -470,3 +464,41 @@ def ask_llm(question):
 if __name__ == "__main__":
     print("Jeeves web interface starting on http://0.0.0.0:5000")
     app.run(host="0.0.0.0", port=5000, debug=False)
+
+@app.route('/mirror-control')
+def mirror_control():
+    return """<!DOCTYPE html>
+<html>
+<head><title>Mirror Control</title></head>
+<body style="background:#1a1a1a;color:#d4d4d4;font-family:sans-serif;padding:2rem;">
+    <h2>Mirror Control</h2>
+    <button onclick="apply()">Apply</button>
+    <button onclick="confirm()">Confirm</button>
+    <button onclick="cancel()">Cancel</button>
+    <button onclick="reload()">Reload Original</button>
+    <pre id="output" style="background:#2c2c2c;padding:1rem;margin-top:1rem;white-space:pre-wrap;">Ready.</pre>
+    <script>
+        async function apply() {
+            const resp = await fetch('/mirror_apply', { method: 'POST' });
+            const data = await resp.json();
+            document.getElementById('output').textContent = data.reply;
+        }
+        async function confirm() {
+            const resp = await fetch('/mirror_confirm', { method: 'POST' });
+            const data = await resp.json();
+            document.getElementById('output').textContent = data.reply;
+        }
+        async function cancel() {
+            const resp = await fetch('/mirror_cancel', { method: 'POST' });
+            const data = await resp.json();
+            document.getElementById('output').textContent = data.reply;
+        }
+        async function reload() {
+            if (!confirm('Reset persona to default?')) return;
+            const resp = await fetch('/mirror_reload', { method: 'POST' });
+            const data = await resp.json();
+            document.getElementById('output').textContent = data.reply;
+        }
+    </script>
+</body>
+</html>"""

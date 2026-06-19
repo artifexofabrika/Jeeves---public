@@ -1,3 +1,5 @@
+import crypto_sim
+import crypto_skill
 import requests, os, datetime, sys, io, re
 import email_skill
 import trading_skill
@@ -9,7 +11,7 @@ sys.stdin = io.TextIOWrapper(sys.stdin.buffer, encoding='utf-8', errors='replace
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
 
 LLM_URL = "http://localhost:8080/v1/chat/completions"
-SYSTEM = "You are Jeeves, a calm, erudite, and unfailingly polite personal AI assistant. You respond with concise, helpful answers, occasionally employing dry wit. You never use slang or corporate jargon, and you always address the user as 'sir' with restrained warmth."
+SYSTEM = open(os.path.expanduser('~/jeeves_persona.txt')).read().strip()
 MIRROR_LOG = os.path.expanduser("~/mirror.log")
 
 def log_mirror(note):
@@ -36,10 +38,90 @@ def handle_lake_search(query):
 def handle_command(user_input):
     parts = user_input.strip().split(maxsplit=1)
     if not parts:
+    elif cmd == "/crypto-sim":
+        rest = parts[1] if len(parts) > 1 else ''
+        sub_parts = rest.split(maxsplit=1)
+        sub_cmd = sub_parts[0].lower() if sub_parts else ''
+        if sub_cmd == "account":
+            return crypto_sim.get_account()
+        elif sub_cmd == "positions":
+            return crypto_sim.get_positions()
+        elif sub_cmd == "buy":
+            args = sub_parts[1] if len(sub_parts) > 1 else ''
+            try:
+                symbol, qty = args.split()
+                return crypto_sim.place_order(symbol.upper(), float(qty), "buy")
+            except:
+                return "Usage: /crypto-sim buy <symbol> <quantity>"
+        elif sub_cmd == "sell":
+            args = sub_parts[1] if len(sub_parts) > 1 else ''
+            try:
+                symbol, qty = args.split()
+                return crypto_sim.place_order(symbol.upper(), float(qty), "sell")
+            except:
+                return "Usage: /crypto-sim sell <symbol> <quantity>"
+        elif sub_cmd == "price":
+            symbol = sub_parts[1] if len(sub_parts) > 1 else ''
+            return crypto_sim.get_price(symbol.upper()) if symbol else "Specify a symbol, sir."
+        else:
+            return "Available crypto-sim commands: account, positions, buy, sell, price."
+    elif cmd == "/mirror_apply":
+        try:
+            with open(MIRROR_LOG, "r") as f:
+                entries = f.readlines()[-5:]
+            if not entries:
+                return "The Mirror is empty, sir. No feedback to apply."
+            feedback = "".join(entries)
+            # Ask the LLM to REVISE the current system prompt, not replace it
+            current_prompt = SYSTEM  # the current prompt defined earlier in the script
+            prompt = f"""You are a system prompt editor. Your task is to revise an existing system prompt for a personal AI assistant named Jeeves, based on recent user feedback. The current prompt is:
+"{current_prompt}"
+The user has given the following feedback:
+{feedback}
+Please produce a revised prompt that addresses the feedback while preserving the assistant's core character: calm, erudite, polite, with occasional dry wit. The new prompt should be concise and suitable for a personal valet. Output ONLY the revised prompt text, nothing else."""
+            reply = ask_llm(prompt)
+            # Store the proposal for confirmation
+            with open("/tmp/mirror_proposed_prompt.txt", "w") as f:
+                f.write(reply)
+            return (f"Proposed new persona:\n{reply}\n\n"
+                    "To apply this change, type /mirror_confirm. To discard, type /mirror_cancel.")
+        except Exception as e:
+            return f"Mirror apply error: {e}"
+    elif cmd == "/mirror_confirm":
+        if not os.path.exists("/tmp/mirror_proposed_prompt.txt"):
+            return "No pending persona change. Use /mirror_apply first."
+        try:
+            with open("/tmp/mirror_proposed_prompt.txt", "r") as f:
+                new_prompt = f.read().strip()
+            # Save the new prompt to the shared persona file
+            persona_file = os.path.expanduser("~/jeeves_persona.txt")
+            with open(persona_file, "w") as pf:
+                pf.write(new_prompt)
+            os.remove("/tmp/mirror_proposed_prompt.txt")
+            # Restart services to pick up the change
+            import subprocess
+            subprocess.run(["sudo", "systemctl", "restart", "jeeves-web"])
+            subprocess.run(["sudo", "pkill", "-9", "-f", "jeeves_telegram.py"])
+            subprocess.run(["nohup", "python3", os.path.expanduser("~/jeeves_telegram.py"), ">", "/dev/null", "2>&1", "&"])
+            return "Persona updated, sir. The butler will now speak with the new tone."
+        except Exception as e:
+            return f"Mirror confirm error: {e}"
+    elif cmd == "/mirror_cancel":
+        if os.path.exists("/tmp/mirror_proposed_prompt.txt"):
+            os.remove("/tmp/mirror_proposed_prompt.txt")
+        return "Persona change cancelled, sir."
         return None
     cmd = parts[0].lower()
     # Mirror commands
     if cmd == "/mirror":
+            pass
+        except:
+                return "The Mirror is full (3 entries). Please use the Refine Persona button on the Mirror tab, or perform a Factory Reset to discard all pending feedback."
+            if len(pending) >= 3:
+                pending = f.readlines()
+            with open(MIRROR_LOG, "r") as f:
+        try:
+        # Cap at 3 pending entries
         if len(parts) > 1:
             note = parts[1]
             log_mirror(note)
@@ -109,6 +191,33 @@ def handle_command(user_input):
             return trading_skill.get_market_price(symbol.upper()) if symbol else "Specify a symbol, sir."
         else:
             return "Available trade commands: account, positions, buy, sell, price."
+    elif cmd == "/crypto":
+        rest = parts[1] if len(parts) > 1 else ''
+        sub_parts = rest.split(maxsplit=1)
+        sub_cmd = sub_parts[0].lower() if sub_parts else ''
+        if sub_cmd == "account":
+            return crypto_skill.get_account()
+        elif sub_cmd == "positions":
+            return crypto_skill.get_positions()
+        elif sub_cmd == "buy":
+            args = sub_parts[1] if len(sub_parts) > 1 else ''
+            try:
+                symbol, qty = args.split()
+                return crypto_skill.place_order(symbol.upper(), float(qty), "buy")
+            except:
+                return "Usage: /crypto buy <symbol> <quantity>"
+        elif sub_cmd == "sell":
+            args = sub_parts[1] if len(sub_parts) > 1 else ''
+            try:
+                symbol, qty = args.split()
+                return crypto_skill.place_order(symbol.upper(), float(qty), "sell")
+            except:
+                return "Usage: /crypto sell <symbol> <quantity>"
+        elif sub_cmd == "price":
+            symbol = sub_parts[1] if len(sub_parts) > 1 else ''
+            return crypto_skill.get_price(symbol.upper()) if symbol else "Specify a symbol, sir."
+        else:
+            return "Available crypto commands: account, positions, buy, sell, price."
     return None
 
 def ask_jeeves(question):
