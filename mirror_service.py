@@ -17,18 +17,24 @@ def refine_persona():
             entries = f.readlines()
         if not entries:
             return jsonify({"reply": "The Mirror is empty, sir. No feedback to refine."})
-        all_feedback = "\n".join([e.strip().split(" | ", 1)[-1] for e in entries if " | " in e])
-        current_prompt = open(PERSONA_FILE).read().strip()
-        prompt = f"You are a persona editor. The current persona is:\n{current_prompt}\n\nThe user has given the following feedback, each on a separate line. Please revise the persona to incorporate every piece of feedback while preserving its core character. The new persona should be comprehensive and specific, not a single sentence. Output ONLY the revised persona text, with no introductory or concluding remarks.\n\nFeedback:\n{all_feedback}"
+        last_feedback = entries[-1].strip()
+        core_prompt = open(os.path.expanduser("~/jeeves_core_prompt.txt")).read().strip()
+        change_log = open(os.path.expanduser("~/jeeves_change_log.txt")).read().strip()
+        prompt = f"You are a meticulous persona editor. The locked core persona is:\n\n{core_prompt}\n\nThe current change log is:\n\n{change_log}\n\nThe user has given this feedback:\n\n{last_feedback}\n\nYour task is to produce a revised change log entry (one or two sentences) that incorporates the feedback. Do NOT modify the core persona. The change log should contain ONLY specific modifications, such as 'address me as master' or 'prefer a warmer tone in the mornings'. Output ONLY the revised change log text, nothing else."
         resp = requests.post(LLM_URL, json={
             "model": "llama",
             "messages": [{"role": "user", "content": prompt}],
-            "temperature": 0.7, "max_tokens": 300
-        }, timeout=90)
+            "temperature": 0.7, "max_tokens": 150
+        }, timeout=60)
         if resp.ok:
-            new_prompt = resp.json()["choices"][0]["message"]["content"].strip()
+            new_changes = resp.json()["choices"][0]["message"]["content"].strip()
+            # Write the new change log
+            with open(os.path.expanduser("~/jeeves_change_log.txt"), "w") as f:
+                f.write(new_changes)
+            # Rebuild the persona file
+            persona = core_prompt + "\n\n" + new_changes if new_changes else core_prompt
             with open(PERSONA_FILE, "w") as f:
-                f.write(new_prompt)
+                f.write(persona.strip())
             # Clear the mirror log
             with open(MIRROR_LOG, "w") as f:
                 f.write("")
@@ -36,12 +42,11 @@ def refine_persona():
             subprocess.run(["sudo", "systemctl", "restart", "jeeves-web"])
             subprocess.run(["sudo", "pkill", "-9", "-f", "jeeves_telegram.py"])
             subprocess.run(["nohup", "python3", os.path.expanduser("~/jeeves_telegram.py"), ">", "/dev/null", "2>&1", "&"])
-            return jsonify({"reply": f"Persona refined and updated, sir.\n\nNew persona:\n{new_prompt}"})
+            return jsonify({"reply": f"Persona updated, sir. Change log now: {new_changes}"})
         else:
             return jsonify({"reply": "I am unable to refine the persona at the moment, sir."})
     except Exception as e:
         return jsonify({"reply": f"Error: {e}"})
-
 @app.route('/save_default', methods=['POST'])
 def save_default():
     try:
