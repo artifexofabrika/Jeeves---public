@@ -32,6 +32,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Jeeves - Personal AI Valet</title>
+    <link rel="icon" type="image/png" href="/favicon.png">
+    <link rel="icon" type="image/png" href="data:image/png;base64,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">
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #1a1a1a; color: #d4d4d4; height: 100vh; display: flex; flex-direction: column; }
@@ -482,6 +484,22 @@ def ask_llm(question):
         return "I am momentarily indisposed, sir."
     except Exception as e:
         return f"I apologize, sir. An error occurred: {e}"
+
+
+@app.route('/landing')
+def landing():
+    from flask import send_file
+    return send_file(os.path.expanduser('~/landing.html'))
+
+
+    from flask import send_file
+    return send_file(os.path.expanduser('~/favicon.ico'), mimetype='image/x-icon')
+
+
+@app.route('/favicon.png')
+def favicon():
+    from flask import send_file
+    return send_file(os.path.expanduser('~/favicon.png'), mimetype='image/png')
 
 if __name__ == "__main__":
     print("Jeeves web interface starting on http://0.0.0.0:5000")
