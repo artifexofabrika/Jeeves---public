@@ -34,94 +34,96 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     <title>Jeeves - Personal AI Valet</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #1a1a1a; color: #d4d4d4; display: flex; flex-direction: column; height: 100vh; }
-        header { background: #2c2c2c; padding: 1rem; text-align: center; border-bottom: 1px solid #444; }
-        header h1 { font-size: 1.5rem; color: #c0a878; }
-        .main { display: flex; flex: 1; overflow: hidden; }
-        .chat-area { flex: 3; display: flex; flex-direction: column; border-right: 1px solid #444; }
-        .messages { flex: 1; overflow-y: auto; padding: 1rem; }
-        .message { margin-bottom: 1rem; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #1a1a1a; color: #d4d4d4; height: 100vh; display: flex; flex-direction: column; }
+        .top-bar { height: 25%; display: flex; flex-direction: column; border-bottom: 1px solid #444; background: #1e1e1e; }
+        .top-bar .chat-messages { flex: 1; overflow-y: auto; padding: 0.6rem; font-size: 0.9rem; }
+        .top-bar .chat-input { display: flex; padding: 0.4rem; background: #2c2c2c; }
+        .top-bar .chat-input input { flex: 1; padding: 0.4rem; background: #3c3c3c; border: 1px solid #555; color: #fff; border-radius: 4px; font-size: 0.85rem; }
+        .top-bar .chat-input button { padding: 0.4rem 0.8rem; margin-left: 0.4rem; background: #c0a878; border: none; border-radius: 4px; cursor: pointer; color: #1a1a1a; font-weight: bold; font-size: 0.85rem; }
+        .middle-area { height: 50%; display: flex; flex-direction: column; border-bottom: 1px solid #444; }
+        .middle-area .tab-buttons { display: flex; flex-wrap: wrap; gap: 0.2rem; padding: 0.3rem 0.6rem; background: #2c2c2c; }
+        .middle-area .tab { background: #3c3c3c; border: 1px solid #555; color: #d4d4d4; padding: 0.3rem 0.5rem; border-radius: 3px; cursor: pointer; font-size: 0.8rem; }
+        .middle-area .tab.active { background: #c0a878; color: #1a1a1a; border-color: #c0a878; }
+        .middle-area .tab-content { flex: 1; overflow-y: auto; padding: 0.6rem; }
+        .bottom-bar { height: 25%; display: flex; flex-direction: column; background: #1e1e1e; padding: 0.6rem; gap: 0.4rem; }
+        .bottom-bar .btn-row { display: flex; flex-wrap: wrap; gap: 0.3rem; }
+        .bottom-bar .btn { background: #3c3c3c; border: 1px solid #555; color: #d4d4d4; padding: 0.3rem 0.6rem; border-radius: 3px; cursor: pointer; font-size: 0.8rem; white-space: nowrap; }
+        .bottom-bar .btn:hover { background: #4c4c4c; }
+        .bottom-bar .status-panel { flex: 1; display: flex; flex-direction: column; gap: 0.3rem; overflow-y: auto; }
+        .panel { background: #2c2c2c; border: 1px solid #444; border-radius: 4px; padding: 0.6rem; margin-bottom: 0.5rem; white-space: pre-wrap; word-wrap: break-word; font-size: 0.85rem; }
+        .message { margin-bottom: 0.4rem; font-size: 0.9rem; }
         .message.user { text-align: right; color: #a0c0ff; }
         .message.jeeves { text-align: left; color: #c0a878; }
-        .input-area { display: flex; padding: 0.5rem; background: #2c2c2c; }
-        .input-area input { flex: 1; padding: 0.5rem; background: #3c3c3c; border: 1px solid #555; color: #fff; border-radius: 4px; }
-        .input-area button { padding: 0.5rem 1rem; margin-left: 0.5rem; background: #c0a878; border: none; border-radius: 4px; cursor: pointer; color: #1a1a1a; font-weight: bold; }
-        .sidebar { flex: 1; overflow-y: auto; padding: 1rem; background: #222; display: flex; flex-direction: column; }
-        .sidebar .tab-buttons { display: flex; flex-wrap: wrap; gap: 0.3rem; margin-bottom: 1rem; }
-        .sidebar .tab { background: #3c3c3c; border: 1px solid #555; color: #d4d4d4; padding: 0.3rem 0.6rem; border-radius: 3px; cursor: pointer; font-size: 0.85rem; }
-        .sidebar .tab.active { background: #c0a878; color: #1a1a1a; border-color: #c0a878; }
-        .sidebar .tab-content { flex: 1; overflow-y: auto; }
-        .sidebar .panel { background: #2c2c2c; border: 1px solid #444; border-radius: 4px; padding: 0.8rem; margin-bottom: 1rem; white-space: pre-wrap; word-wrap: break-word; max-height: none; overflow-y: auto; font-size: 0.9rem; }
-        .sidebar .btn-group { display: flex; flex-wrap: wrap; gap: 0.3rem; margin-top: 0.5rem; }
-        .status { font-size: 0.85rem; color: #888; margin-top: 0.5rem; }
+        .status { font-size: 0.8rem; color: #888; }
     </style>
 </head>
 <body>
-    <header>
-        <h1>Jeeves - Your Personal AI Valet</h1>
-        <div class="status" id="status">Ready</div>
-    </header>
-    <div class="main">
-        <div class="chat-area">
-            <div class="messages" id="messages">
-                <div class="message jeeves">Good day, sir. How may I be of service?</div>
-            </div>
-            <div class="input-area">
-                <input type="text" id="userInput" placeholder="Type your message or command..." onkeypress="if(event.key==='Enter') sendMessage()">
-                <button onclick="sendMessage()">Send</button>
-            </div>
+    <!-- Top 25%: Chat -->
+    <div class="top-bar">
+        <div class="chat-messages" id="messages">
+            <div class="message jeeves">Good day, sir.</div>
         </div>
-        <div class="sidebar">
-            <div class="tab-buttons">
-                <button class="tab" onclick="showTab('email')">📧 Inbox</button>
-                <button class="tab" onclick="showTab('account')">💼 Account</button>
-                <button class="tab" onclick="showTab('positions')">📊 Positions</button>
-                <button class="tab active" onclick="showTab('mirror')">🪞 Mirror</button>
-                <button class="tab" onclick="showTab('lake')">🌊 Lake</button>
-                <button class="tab" onclick="showTab('crypto')">🪙 Crypto-Sim</button>
-                <button class="tab" onclick="showTab('cryptostrat')">📈 Crypto Strat</button>
-            </div>
-            <div class="tab-content">
-                <div id="tab-email" class="panel" style="display: none;"></div>
-                <div id="tab-account" class="panel" style="display: none;"></div>
-                <div id="tab-positions" class="panel" style="display: none;"></div>
-                <div id="tab-mirror" class="panel" style="display: block;">
-                    <div id="mirrorPersonaPanel" style="max-height: 120px; overflow-y: auto;">Loading persona...</div>
-                    <div id="mirrorEntriesPanel" style="max-height: 150px; overflow-y: auto;">No recent feedback.</div>
-                    <div class="btn-group" style="margin-top: 0.5rem;">
-                        <button class="btn" onclick="refinePersona()">✨ Refine Persona</button>
-                        <button class="btn" onclick="saveDefault()">💾 Save as Default</button>
-                        <button class="btn" onclick="reloadSaved()">📂 Reload Saved</button>
-                        <button class="btn" onclick="factoryReset()">⚠️ Factory Reset</button>
-                    </div>
-                </div>
-                    <div id="mirrorEntriesPanel" style="max-height: 150px; overflow-y: auto;">No recent feedback.</div>
-                    <div class="btn-group">
-                        <button class="tab" onclick="mirrorApply()">✨ Apply</button>
-                        <button class="tab" onclick="mirrorConfirm()">✅ Confirm</button>
-                        <button class="tab" onclick="mirrorCancel()">❌ Cancel</button>
-                        <button class="tab" onclick="mirrorReload()">🔄 Reload Original</button>
-                    </div>
-                </div>
-                <div id="tab-lake" class="panel" style="display: none;">Loading...</div>
-                <div id="tab-crypto" class="panel" style="display: none;">Loading...</div>
-                <div id="tab-cryptostrat" class="panel" style="display: none;">
-                    <div id="cryptoVaultDisplay" style="max-height: 60px; overflow-y: auto; margin-bottom: 0.5rem;">Loading vault...</div>
-                <div id="cryptoStratSummary" style="max-height: 150px; overflow-y: auto;">Loading strategy...</div>
-                    <div id="cryptoStratFeedback" style="max-height: 150px; overflow-y: auto;">No recent feedback.</div>
-                    <div class="btn-group" style="margin-top: 0.5rem;">
-                        <button class="btn" onclick="refineCryptoStrat()">✨ Refine Strategy</button>
-                        <button class="btn" onclick="saveCryptoStrat()">💾 Save Baseline</button>
-                        <button class="btn" onclick="reloadCryptoStrat()">📂 Reload Baseline</button>
-                        <button class="btn" onclick="factoryResetCryptoStrat()">⚠️ Factory Reset</button>
-                    </div>
+        <div class="chat-input">
+            <input type="text" id="userInput" placeholder="Speak to Jeeves..." onkeypress="if(event.key==='Enter') sendMessage()">
+            <button onclick="sendMessage()">Send</button>
+        </div>
+    </div>
+
+    <!-- Middle 50%: Active Skill Panel -->
+    <div class="middle-area">
+        <div class="tab-buttons">
+            <button class="tab active" data-tab="mirror" onclick="showTab('mirror')">🪞 Mirror</button>
+            <button class="tab" data-tab="cryptostrat" onclick="showTab('cryptostrat')">📈 Crypto Strat</button>
+            <button class="tab" data-tab="account" onclick="showTab('account')">💼 Account</button>
+            <button class="tab" data-tab="email" onclick="showTab('email')">📧 Inbox</button>
+            <button class="tab" data-tab="lake" onclick="showTab('lake')">🌊 Lake</button>
+        </div>
+        <div class="tab-content">
+            <div id="tab-mirror" class="panel" style="display: block;">
+                <div id="mirrorPersonaPanel" style="max-height: 100%; overflow-y: auto;">Loading persona...</div>
+                <div id="mirrorEntriesPanel" style="max-height: 120px; overflow-y: auto;">No entries.</div>
+                <div style="margin-top: 0.4rem; display: flex; gap: 0.3rem;">
+                    <button class="btn" onclick="refinePersona()">✨ Refine</button>
+                    <button class="btn" onclick="saveDefault()">💾 Save</button>
+                    <button class="btn" onclick="reloadSaved()">📂 Reload</button>
+                    <button class="btn" onclick="factoryReset()">⚠️ Reset</button>
                 </div>
             </div>
+            <div id="tab-cryptostrat" class="panel" style="display: none;">
+                <div id="cryptoVaultDisplay" style="margin-bottom: 0.4rem;">Loading vault...</div>
+                <div id="cryptoStratSummary" style="max-height: 100%; overflow-y: auto;">Loading strategy...</div>
+                <div id="cryptoStratFeedback" style="max-height: 120px; overflow-y: auto;">No feedback.</div>
+                <div style="margin-top: 0.4rem; display: flex; gap: 0.3rem;">
+                    <button class="btn" onclick="refineCryptoStrat()">✨ Refine</button>
+                    <button class="btn" onclick="saveCryptoStrat()">💾 Save</button>
+                    <button class="btn" onclick="reloadCryptoStrat()">📂 Reload</button>
+                    <button class="btn" onclick="factoryResetCryptoStrat()">⚠️ Reset</button>
+                </div>
+            </div>
+            <div id="tab-account" class="panel" style="display: none;">Loading...</div>
+            <div id="tab-email" class="panel" style="display: none;">Loading...</div>
+            <div id="tab-lake" class="panel" style="display: none;">Loading...</div>
+        </div>
+    </div>
+
+    <!-- Bottom 25%: Command Palette -->
+    <div class="bottom-bar">
+        <div class="btn-row">
+            <button class="btn" onclick="sendCommand('/trade account')">💼 Portfolio</button>
+            <button class="btn" onclick="sendCommand('/trade positions')">📊 Positions</button>
+            <button class="btn" onclick="sendCommand('/email check')">📧 Inbox</button>
+            <button class="btn" onclick="sendCommand('/crypto-sim account')">🪙 Crypto-Sim</button>
+            <button class="btn" onclick="sendCommand('/lake good service')">🌊 Lake Search</button>
+            <button class="btn" onclick="sendCommand('/persona')">👤 Persona</button>
+        </div>
+        <div class="status-panel">
+            <div id="vaultStatus" class="status">Vault: --</div>
+            <div id="cmdOutput" class="status" style="flex:1; overflow-y:auto;"></div>
         </div>
     </div>
 
     <script>
-        // === Chat Functions ===
+        // === Chat ===
         function addMessage(sender, text) {
             const msgDiv = document.createElement('div');
             msgDiv.className = 'message ' + sender;
@@ -129,128 +131,114 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             document.getElementById('messages').appendChild(msgDiv);
             document.getElementById('messages').scrollTop = document.getElementById('messages').scrollHeight;
         }
-
         async function sendMessage() {
             const input = document.getElementById('userInput');
             const text = input.value.trim();
             if (!text) return;
             addMessage('user', text);
             input.value = '';
-            document.getElementById('status').textContent = 'Thinking...';
-            const resp = await fetch('/chat', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ message: text })
-            });
+            const resp = await fetch('/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: text }) });
             const data = await resp.json();
             addMessage('jeeves', data.reply);
-            document.getElementById('status').textContent = 'Ready';
+            if (text.startsWith('/mirror')) loadMirrorPanel();
         }
-
         async function fetchCommand(cmd) {
-            const resp = await fetch('/command', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ command: cmd })
-            });
+            const resp = await fetch('/command', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ command: cmd }) });
             const data = await resp.json();
             return data.reply;
         }
+        async function sendCommand(cmd) {
+            const reply = await fetchCommand(cmd);
+            document.getElementById('cmdOutput').textContent = reply;
+        }
 
-        // === Tab Switching ===
+        // === Tabs ===
         function showTab(tabName) {
-            const contents = document.querySelectorAll('.tab-content > div');
-            contents.forEach(el => el.style.display = 'none');
+            document.querySelectorAll('.tab-content > div').forEach(el => el.style.display = 'none');
             const target = document.getElementById('tab-' + tabName);
             if (target) target.style.display = 'block';
-            document.querySelectorAll('.tab-buttons .tab').forEach(btn => btn.classList.remove('active'));
-            const activeBtn = document.querySelector(`.tab-buttons .tab[onclick="showTab('${tabName}')"]`);
-            if (activeBtn) activeBtn.classList.add('active');
+            document.querySelectorAll('.tab-buttons .tab').forEach(btn => {
+                btn.classList.remove('active');
+                if (btn.getAttribute('data-tab') === tabName) btn.classList.add('active');
+            });
             if (tabName === 'email') loadEmail();
             if (tabName === 'account') loadAccount();
-            if (tabName === 'positions') loadPositions();
             if (tabName === 'mirror') loadMirrorPanel();
             if (tabName === 'lake') loadLake();
-            if (tabName === 'crypto') loadCrypto();
+            if (tabName === 'cryptostrat') loadCryptoStrat();
         }
 
-        async function loadEmail() {
-            const data = await fetchCommand('/email check');
-            document.getElementById('tab-email').textContent = data;
-        }
-        async function loadAccount() {
-            const data = await fetchCommand('/trade account');
-            document.getElementById('tab-account').textContent = data;
-        }
-        async function loadPositions() {
-            const data = await fetchCommand('/trade positions');
-            document.getElementById('tab-positions').textContent = data;
-        }
-        async function loadLake() {
-            const data = await fetchCommand('/lake good service');
-            document.getElementById('tab-lake').textContent = data;
-        }
-        async function loadCrypto() {
-            const data = await fetchCommand('/crypto-sim account');
-            document.getElementById('tab-crypto').textContent = data;
-        }
+        async function loadEmail() { document.getElementById('tab-email').textContent = await fetchCommand('/email check'); }
+        async function loadAccount() { document.getElementById('tab-account').textContent = await fetchCommand('/trade account'); }
+        async function loadLake() { document.getElementById('tab-lake').textContent = await fetchCommand('/lake good service'); }
 
-        // === Mirror UI Functions ===
+        // === Mirror ===
         async function loadMirrorPanel() {
+            document.getElementById('mirrorPersonaPanel').textContent = await fetchCommand('/persona') || 'No persona.';
+            const raw = await fetchCommand('/mirror_read');
             try {
-                const presp = await fetch('/command', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ command: '/persona' })
-                });
-                const pdata = await presp.json();
-                document.getElementById('mirrorPersonaPanel').textContent = pdata.reply || 'No persona.';
-            } catch(e) {
-                document.getElementById('mirrorPersonaPanel').textContent = 'Error loading persona.';
-            }
-            try {
-                const eresp = await fetch('/command', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ command: '/mirror_read' })
-                });
-                const edata = await eresp.json();
-                const entries = JSON.parse(edata.reply);
-                document.getElementById('mirrorEntriesPanel').textContent = entries.length ? entries.join(String.fromCharCode(10)) : 'No entries.';
-            } catch(e) {
-                document.getElementById('mirrorEntriesPanel').textContent = 'No recent feedback.';
-            }
+                const entries = JSON.parse(raw);
+                document.getElementById('mirrorEntriesPanel').textContent = entries.length ? entries.join('\\n') : 'No entries.';
+            } catch(e) { document.getElementById('mirrorEntriesPanel').textContent = raw || 'No entries.'; }
         }
         async function refinePersona() {
-            document.getElementById('mirrorPersonaPanel').textContent = 'Refining persona...';
-            const resp = await fetch('http://192.168.232.100:5001/refine_persona', { method: 'POST' });
-            const data = await resp.json();
-            document.getElementById('mirrorPersonaPanel').textContent = data.reply;
-            document.getElementById('mirrorEntriesPanel').textContent = 'No entries.';
+            document.getElementById('mirrorPersonaPanel').textContent = 'Refining...';
+            const reply = await (await fetch('http://192.168.232.100:5001/refine_persona', { method: 'POST' })).json();
+            document.getElementById('mirrorPersonaPanel').textContent = reply.reply;
+            setTimeout(loadMirrorPanel, 3000);
         }
-        async function saveDefault() {
-            const resp = await fetch('http://192.168.232.100:5001/save_default', { method: 'POST' });
-            const data = await resp.json();
-            alert(data.reply);
-        }
+        async function saveDefault() { alert((await (await fetch('http://192.168.232.100:5001/save_default', { method: 'POST' })).json()).reply); }
         async function reloadSaved() {
-            document.getElementById('mirrorPersonaPanel').textContent = 'Restoring saved persona...';
-            const resp = await fetch('http://192.168.232.100:5001/reload_saved', { method: 'POST' });
-            const data = await resp.json();
-            document.getElementById('mirrorPersonaPanel').textContent = data.reply;
-            document.getElementById('mirrorEntriesPanel').textContent = 'No entries.';
+            const reply = await (await fetch('http://192.168.232.100:5001/reload_saved', { method: 'POST' })).json();
+            document.getElementById('mirrorPersonaPanel').textContent = reply.reply;
+            setTimeout(loadMirrorPanel, 3000);
         }
         async function factoryReset() {
-            if (!confirm('This will erase your current persona and any saved default. Are you sure?')) return;
-            document.getElementById('mirrorPersonaPanel').textContent = 'Restoring factory persona...';
-            const resp = await fetch('http://192.168.232.100:5001/factory_reset', { method: 'POST' });
-            const data = await resp.json();
-            document.getElementById('mirrorPersonaPanel').textContent = data.reply;
-            document.getElementById('mirrorEntriesPanel').textContent = 'No entries.';
+            if (!confirm('Erase persona and saved default?')) return;
+            const reply = await (await fetch('http://192.168.232.100:5001/factory_reset', { method: 'POST' })).json();
+            document.getElementById('mirrorPersonaPanel').textContent = reply.reply;
+            setTimeout(loadMirrorPanel, 3000);
+        }
+
+        // === Crypto Strat ===
+        async function loadCryptoStrat() {
+            document.getElementById('cryptoStratSummary').textContent = await fetchCommand('/crypto-strat_summary') || 'No strategy.';
+            document.getElementById('cryptoStratFeedback').textContent = await fetchCommand('/crypto-strat_read') || 'No feedback.';
+            const vault = await fetchCommand('/crypto-vault');
+            document.getElementById('cryptoVaultDisplay').textContent = vault || 'Vault: --';
+            document.getElementById('vaultStatus').textContent = vault || 'Vault: --';
+        }
+        async function refineCryptoStrat() {
+            document.getElementById('cryptoStratSummary').textContent = 'Refining...';
+            document.getElementById('cryptoStratSummary').textContent = await fetchCommand('/crypto-strat_apply');
+            loadCryptoStrat();
+        }
+        async function saveCryptoStrat() { alert(await fetchCommand('/crypto-strat_save')); }
+        async function reloadCryptoStrat() {
+            document.getElementById('cryptoStratSummary').textContent = await fetchCommand('/crypto-strat_reload');
+            loadCryptoStrat();
+        }
+        async function factoryResetCryptoStrat() {
+            if (!confirm('Restore factory strategy?')) return;
+            document.getElementById('cryptoStratSummary').textContent = await fetchCommand('/crypto-strat_factory_reset');
+            loadCryptoStrat();
         }
 
         window.onload = function() {
             showTab('mirror');
+            loadCryptoStrat();
+            // Auto-refresh the active tab every 60 seconds
+            setInterval(function() {
+                const activeTab = document.querySelector('.tab-buttons .tab.active');
+                if (activeTab) {
+                    const tabName = activeTab.getAttribute('data-tab');
+                    if (tabName === 'mirror') loadMirrorPanel();
+                    else if (tabName === 'cryptostrat') loadCryptoStrat();
+                    else if (tabName === 'account') loadAccount();
+                    else if (tabName === 'email') loadEmail();
+                    else if (tabName === 'lake') loadLake();
+                }
+            }, 10000);
         };
     </script>
 </body>
@@ -277,67 +265,6 @@ def command():
     cmd = data.get('command', '')
     reply = handle_command(cmd)
     return jsonify({'reply': reply})
-
-@app.route('/mirror_apply', methods=['POST'])
-def mirror_apply():
-    try:
-        with open(MIRROR_LOG, "r") as f:
-            entries = f.readlines()
-        if not entries:
-            return jsonify({"reply": "The Mirror is empty, sir. No feedback to apply."})
-        last_feedback = entries[-1].strip()
-        current_prompt = open(PERSONA_FILE).read().strip()
-        prompt = f"Revise this persona based on the feedback. Persona: \"{current_prompt}\". Feedback: {last_feedback}. Output ONLY the new persona text."
-        resp = requests.post(LLM_URL, json={
-            "model": "llama",
-            "messages": [{"role": "user", "content": prompt}],
-            "temperature": 0.7, "max_tokens": 150
-        }, timeout=60)
-        if resp.ok:
-            new_prompt = resp.json()["choices"][0]["message"]["content"].strip()
-            with open("/tmp/mirror_proposed_prompt.txt", "w") as f:
-                f.write(new_prompt)
-            return jsonify({"reply": f"Proposed new persona:\n{new_prompt}\n\nTo apply, type /mirror_confirm. To discard, /mirror_cancel."})
-        else:
-            return jsonify({"reply": "I am unable to revise the persona at the moment, sir."})
-    except Exception as e:
-        return jsonify({"reply": f"Mirror apply error: {e}"})
-
-@app.route('/mirror_confirm', methods=['POST'])
-def mirror_confirm():
-    if not os.path.exists("/tmp/mirror_proposed_prompt.txt"):
-        return jsonify({"reply": "No pending persona change. Use /mirror_apply first."})
-    try:
-        with open("/tmp/mirror_proposed_prompt.txt", "r") as f:
-            new_prompt = f.read().strip()
-        with open(PERSONA_FILE, "w") as f:
-            f.write(new_prompt)
-        os.remove("/tmp/mirror_proposed_prompt.txt")
-        subprocess.run(["sudo", "systemctl", "restart", "jeeves-web"])
-        subprocess.run(["sudo", "pkill", "-9", "-f", "jeeves_telegram.py"])
-        subprocess.run(["nohup", "python3", os.path.expanduser("~/jeeves_telegram.py"), ">", "/dev/null", "2>&1", "&"])
-        return jsonify({"reply": "Persona updated, sir. The butler will now speak with the new tone."})
-    except Exception as e:
-        return jsonify({"reply": f"Mirror confirm error: {e}"})
-
-@app.route('/mirror_cancel', methods=['POST'])
-def mirror_cancel():
-    if os.path.exists("/tmp/mirror_proposed_prompt.txt"):
-        os.remove("/tmp/mirror_proposed_prompt.txt")
-    return jsonify({"reply": "Persona change cancelled, sir."})
-
-@app.route('/mirror_reload', methods=['POST'])
-def mirror_reload():
-    default_prompt = "You are Jeeves, a calm, erudite personal valet. You respond with concise, direct answers. When asked for suggestions or lists, limit them to 3-5 items maximum. Never print a wall of text. Use dry wit sparingly. You address the user as \"sir\" with restrained warmth, and you may gently challenge unsound decisions."
-    try:
-        with open(PERSONA_FILE, "w") as f:
-            f.write(default_prompt)
-        subprocess.run(["sudo", "systemctl", "restart", "jeeves-web"])
-        subprocess.run(["sudo", "pkill", "-9", "-f", "jeeves_telegram.py"])
-        subprocess.run(["nohup", "python3", os.path.expanduser("~/jeeves_telegram.py"), ">", "/dev/null", "2>&1", "&"])
-        return jsonify({"reply": "Original persona restored, sir."})
-    except Exception as e:
-        return jsonify({"reply": f"Reload error: {e}"})
 
 def handle_command(user_input):
     parts = user_input.strip().split(maxsplit=1)
@@ -370,7 +297,8 @@ def handle_command(user_input):
     elif cmd == "/persona":
         try:
             with open(PERSONA_FILE, "r") as f:
-                return "Current persona: " + f.read().strip()
+                persona_text = f.read().strip().replace('\n', ' ')
+            return "Current persona: " + persona_text
         except Exception as e:
             return f"Unable to read persona file: {e}"
     # Email
@@ -454,34 +382,27 @@ def handle_command(user_input):
             return crypto_sim.get_price(symbol.upper()) if symbol else "Specify a symbol, sir."
         else:
             return "Available crypto-sim commands: account, positions, buy, sell, price."
-    elif cmd == "/crypto-strat":
+
+    elif cmd == "/crypto-strat_summary":
         try:
-            with open(os.path.expanduser("~/crypto_strategy_feedback.log"), "r") as f:
-                pending = f.readlines()
-            if len(pending) >= 3:
-                return "The Crypto Strategy Mirror is full (3 entries). Please refine or discard."
+            core = open(os.path.expanduser("~/crypto_sim_strategy_core.txt")).read().strip()
+            changes = open(os.path.expanduser("~/crypto_strategy_changelog.txt")).read().strip()
+            if changes:
+                return core + "\n\n--- Change Log ---\n" + changes
+            return core
         except:
-            pass
-        if len(parts) > 1:
-            note = parts[1]
-            timestamp = datetime.datetime.now().isoformat()
-            with open(os.path.expanduser("~/crypto_strategy_feedback.log"), "a") as f:
-                f.write(f"{timestamp} | {note}\n")
-            return "Noted, sir. Your feedback has been logged in the Crypto Strategy Mirror."
-        return "What feedback do you have for the crypto strategy?"
+            return "No strategy file found."
+
     elif cmd == "/crypto-strat_read":
         try:
             with open(os.path.expanduser("~/crypto_strategy_feedback.log"), "r") as f:
                 lines = [line.strip() for line in f.readlines()[-3:] if line.strip()]
-            return json.dumps(lines)
+            if lines:
+                return "\n".join(lines)
+            return "No feedback."
         except:
-            return "[]"
-    elif cmd == "/crypto-strat_summary":
-        try:
-            with open(os.path.expanduser("~/crypto_sim_strategy.txt"), "r") as f:
-                return f.read().strip()
-        except:
-            return "No strategy file found."
+            return "No feedback."
+
     elif cmd == "/crypto-vault":
         try:
             with open(os.path.expanduser("~/crypto_sim_vault.json"), "r") as f:
@@ -492,67 +413,57 @@ def handle_command(user_input):
     elif cmd == "/crypto-strat_apply":
         try:
             fb_path = os.path.expanduser("~/crypto_strategy_feedback.log")
+            core_path = os.path.expanduser("~/crypto_sim_strategy_core.txt")
+            change_path = os.path.expanduser("~/crypto_strategy_changelog.txt")
             strat_path = os.path.expanduser("~/crypto_sim_strategy.txt")
             with open(fb_path, "r") as f:
                 entries = f.readlines()
             if not entries:
                 return "No feedback to apply."
             all_fb = "\n".join([e.strip().split(" | ",1)[-1] for e in entries if " | " in e])
-            current = open(strat_path).read().strip()
-            prompt = f"Revise this crypto trading strategy based on the feedback. Current strategy:\n{current}\n\nFeedback:\n{all_fb}\n\nOutput ONLY the revised strategy text, no commentary."
+            core = open(core_path).read().strip()
+            changes = open(change_path).read().strip()
+            prompt = f"You are a strategy editor. The locked core strategy is:\n\n{core}\n\nThe current change log is:\n\n{changes}\n\nThe user has given this feedback:\n\n{all_fb}\n\nProduce a revised change log (one or two lines) that incorporates the feedback. Do NOT modify the core strategy. The change log should contain ONLY specific modifications, such as 'be 20% more aggressive on ETH' or 'widen stop-loss to 6%'. Output ONLY the revised change log text."
             resp = requests.post(LLM_URL, json={
                 "model": "llama",
                 "messages": [{"role":"user","content":prompt}],
-                "temperature":0.7,"max_tokens":400
+                "temperature":0.7,"max_tokens":200
             }, timeout=60)
             if resp.ok:
-                new_strat = resp.json()["choices"][0]["message"]["content"].strip()
+                new_changes = resp.json()["choices"][0]["message"]["content"].strip()
+                with open(change_path, "w") as f:
+                    f.write(new_changes)
+                # Rebuild the strategy file
+                final = core + "\n\n" + new_changes if new_changes else core
                 with open(strat_path, "w") as f:
-                    f.write(new_strat)
+                    f.write(final.strip())
                 with open(fb_path, "w") as f:
                     f.write("")
-                return f"Strategy refined, sir. New strategy saved."
+                return f"Strategy refined, sir. Change log now: {new_changes}"
             else:
                 return "I am unable to refine the strategy at the moment."
         except Exception as e:
             return f"Error: {e}"
-    elif cmd == "/crypto-strat_save":
+
+    elif cmd == "/crypto-strat_summary":
         try:
-            import shutil
-            shutil.copy(os.path.expanduser("~/crypto_sim_strategy.txt"), os.path.expanduser("~/crypto_sim_strategy_default.txt"))
-            return "Current strategy saved as your personal baseline."
-        except Exception as e:
-            return f"Error saving baseline: {e}"
-    elif cmd == "/crypto-strat_reload":
+            core = open(os.path.expanduser("~/crypto_sim_strategy_core.txt")).read().strip()
+            changes = open(os.path.expanduser("~/crypto_strategy_changelog.txt")).read().strip()
+            if changes:
+                return core + "\n\n--- Change Log ---\n" + changes
+            return core
+        except:
+            return "No strategy file found."
+
+    elif cmd == "/crypto-strat_read":
         try:
-            def_path = os.path.expanduser("~/crypto_sim_strategy_default.txt")
-            if os.path.exists(def_path):
-                import shutil
-                shutil.copy(def_path, os.path.expanduser("~/crypto_sim_strategy.txt"))
-                return "Your saved baseline has been restored."
-            else:
-                return "No saved baseline found."
-        except Exception as e:
-            return f"Error reloading baseline: {e}"
-    elif cmd == "/crypto-strat_factory_reset":
-        factory = """I am a cautious crypto trader. My goal is to preserve capital and achieve steady small gains.
-Rules:
-- Trade only BTC/USD, ETH/USD, USDT/USD, LTC/USD, XRP/USD.
-- Buy when the price is at least 3% below its 20‑day moving average (simulated by recent price actions).
-- Sell if a position gains 5% or more, or if it falls 2% from entry.
-- Never risk more than 2% of the portfolio on a single trade.
-- Maximum 3 open positions.
-- Maximum 5 trades per day.
-- Paper trade only until the system demonstrates a positive return over 30 days."""
-        try:
-            with open(os.path.expanduser("~/crypto_sim_strategy.txt"), "w") as f:
-                f.write(factory)
-            def_path = os.path.expanduser("~/crypto_sim_strategy_default.txt")
-            if os.path.exists(def_path):
-                os.remove(def_path)
-            return "Factory strategy restored. Any saved baseline has been removed."
-        except Exception as e:
-            return f"Error: {e}"
+            with open(os.path.expanduser("~/crypto_strategy_feedback.log"), "r") as f:
+                lines = [line.strip() for line in f.readlines()[-3:] if line.strip()]
+            if lines:
+                return "\n".join(lines)
+            return "No feedback."
+        except:
+            return "No feedback."
     return None
 
 def ask_llm(question):
@@ -575,41 +486,3 @@ def ask_llm(question):
 if __name__ == "__main__":
     print("Jeeves web interface starting on http://0.0.0.0:5000")
     app.run(host="0.0.0.0", port=5000, debug=False)
-
-@app.route('/mirror-control')
-def mirror_control():
-    return """<!DOCTYPE html>
-<html>
-<head><title>Mirror Control</title></head>
-<body style="background:#1a1a1a;color:#d4d4d4;font-family:sans-serif;padding:2rem;">
-    <h2>Mirror Control</h2>
-    <button onclick="apply()">Apply</button>
-    <button onclick="confirm()">Confirm</button>
-    <button onclick="cancel()">Cancel</button>
-    <button onclick="reload()">Reload Original</button>
-    <pre id="output" style="background:#2c2c2c;padding:1rem;margin-top:1rem;white-space:pre-wrap;">Ready.</pre>
-    <script>
-        async function apply() {
-            const resp = await fetch('/mirror_apply', { method: 'POST' });
-            const data = await resp.json();
-            document.getElementById('output').textContent = data.reply;
-        }
-        async function confirm() {
-            const resp = await fetch('/mirror_confirm', { method: 'POST' });
-            const data = await resp.json();
-            document.getElementById('output').textContent = data.reply;
-        }
-        async function cancel() {
-            const resp = await fetch('/mirror_cancel', { method: 'POST' });
-            const data = await resp.json();
-            document.getElementById('output').textContent = data.reply;
-        }
-        async function reload() {
-            if (!confirm('Reset persona to default?')) return;
-            const resp = await fetch('/mirror_reload', { method: 'POST' });
-            const data = await resp.json();
-            document.getElementById('output').textContent = data.reply;
-        }
-    </script>
-</body>
-</html>"""
