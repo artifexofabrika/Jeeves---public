@@ -1,18 +1,17 @@
 import crypto_sim
-import crypto_skill
 import requests, os, datetime, sys, io, re
-import email_skill
-import trading_skill
 import chromadb
 from chromadb.utils import embedding_functions
+import trading_advisor
+import config
 
 # Force UTF-8
 sys.stdin = io.TextIOWrapper(sys.stdin.buffer, encoding='utf-8', errors='replace')
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
 
-LLM_URL = "http://localhost:8080/v1/chat/completions"
-SYSTEM = open(os.path.expanduser('~/jeeves_persona.txt')).read().strip()
-MIRROR_LOG = os.path.expanduser("~/mirror.log")
+LLM_URL = config.LLM_URL
+SYSTEM = open(config.PERSONA_FILE).read().strip()
+MIRROR_LOG = config.MIRROR_LOG
 
 def log_mirror(note):
     timestamp = datetime.datetime.now().isoformat()
@@ -38,6 +37,74 @@ def handle_lake_search(query):
 def handle_command(user_input):
     parts = user_input.strip().split(maxsplit=1)
     if not parts:
+        return None
+    cmd = parts[0].lower()
+    # Mirror commands
+    if cmd == "/mirror":
+        try:
+            with open(MIRROR_LOG, "r") as f:
+                pending = f.readlines()
+            if len(pending) >= 3:
+                return "The Mirror is full (3 entries). Please use the Refine Persona button on the Mirror tab, or perform a Factory Reset to discard all pending feedback."
+        except:
+            pending = []
+        if len(parts) > 1:
+            note = parts[1]
+            log_mirror(note)
+            return "Noted, sir. Your feedback has been logged in the Gentleman's Mirror."
+        else:
+            return "What shall I record, sir? Use /mirror <your note>."
+    elif cmd == "/mirror_read":
+        try:
+            with open(MIRROR_LOG, "r") as f:
+                lines = f.readlines()[-5:]
+            if lines:
+                return "Recent mirror entries:\n" + "".join(lines)
+            else:
+                return "The mirror is empty, sir."
+        except FileNotFoundError:
+            return "The mirror is empty, sir."
+    elif cmd == "/mirror_apply":
+        try:
+            with open(MIRROR_LOG, "r") as f:
+                entries = f.readlines()[-5:]
+            if not entries:
+                return "The Mirror is empty, sir. No feedback to apply."
+            feedback = "".join(entries)
+            current_prompt = SYSTEM
+            prompt = f"""You are a system prompt editor. Your task is to revise an existing system prompt for a personal AI assistant named Jeeves, based on recent user feedback. The current prompt is:
+"{current_prompt}"
+The user has given the following feedback:
+{feedback}
+Please produce a revised prompt that addresses the feedback while preserving the assistant's core character: calm, erudite, polite, with occasional dry wit. The new prompt should be concise and suitable for a personal valet. Output ONLY the revised prompt text, nothing else."""
+            reply = ask_llm(prompt)
+            with open("/tmp/mirror_proposed_prompt.txt", "w") as f:
+                f.write(reply)
+            return (f"Proposed new persona:\n{reply}\n\n"
+                    "To apply this change, type /mirror_confirm. To discard, type /mirror_cancel.")
+        except Exception as e:
+            return f"Mirror apply error: {e}"
+    elif cmd == "/mirror_confirm":
+        if not os.path.exists("/tmp/mirror_proposed_prompt.txt"):
+            return "No pending persona change. Use /mirror_apply first."
+        try:
+            with open("/tmp/mirror_proposed_prompt.txt", "r") as f:
+                new_prompt = f.read().strip()
+            persona_file = config.PERSONA_FILE
+            with open(persona_file, "w") as pf:
+                pf.write(new_prompt)
+            os.remove("/tmp/mirror_proposed_prompt.txt")
+            import subprocess
+            subprocess.run(["sudo", "systemctl", "restart", "jeeves-web"])
+            subprocess.run(["sudo", "pkill", "-9", "-f", "jeeves_telegram.py"])
+            subprocess.run(["nohup", "python3", os.path.expanduser("~/jeeves_telegram.py"), ">", "/dev/null", "2>&1", "&"])
+            return "Persona updated, sir. The butler will now speak with the new tone."
+        except Exception as e:
+            return f"Mirror confirm error: {e}"
+    elif cmd == "/mirror_cancel":
+        if os.path.exists("/tmp/mirror_proposed_prompt.txt"):
+            os.remove("/tmp/mirror_proposed_prompt.txt")
+        return "Persona change cancelled, sir."
     elif cmd == "/crypto-sim":
         rest = parts[1] if len(parts) > 1 else ''
         sub_parts = rest.split(maxsplit=1)
@@ -65,51 +132,6 @@ def handle_command(user_input):
             return crypto_sim.get_price(symbol.upper()) if symbol else "Specify a symbol, sir."
         else:
             return "Available crypto-sim commands: account, positions, buy, sell, price."
-    elif cmd == "/mirror_apply":
-        try:
-            with open(MIRROR_LOG, "r") as f:
-                entries = f.readlines()[-5:]
-            if not entries:
-                return "The Mirror is empty, sir. No feedback to apply."
-            feedback = "".join(entries)
-            # Ask the LLM to REVISE the current system prompt, not replace it
-            current_prompt = SYSTEM  # the current prompt defined earlier in the script
-            prompt = f"""You are a system prompt editor. Your task is to revise an existing system prompt for a personal AI assistant named Jeeves, based on recent user feedback. The current prompt is:
-"{current_prompt}"
-The user has given the following feedback:
-{feedback}
-Please produce a revised prompt that addresses the feedback while preserving the assistant's core character: calm, erudite, polite, with occasional dry wit. The new prompt should be concise and suitable for a personal valet. Output ONLY the revised prompt text, nothing else."""
-            reply = ask_llm(prompt)
-            # Store the proposal for confirmation
-            with open("/tmp/mirror_proposed_prompt.txt", "w") as f:
-                f.write(reply)
-            return (f"Proposed new persona:\n{reply}\n\n"
-                    "To apply this change, type /mirror_confirm. To discard, type /mirror_cancel.")
-        except Exception as e:
-            return f"Mirror apply error: {e}"
-    elif cmd == "/mirror_confirm":
-        if not os.path.exists("/tmp/mirror_proposed_prompt.txt"):
-            return "No pending persona change. Use /mirror_apply first."
-        try:
-            with open("/tmp/mirror_proposed_prompt.txt", "r") as f:
-                new_prompt = f.read().strip()
-            # Save the new prompt to the shared persona file
-            persona_file = os.path.expanduser("~/jeeves_persona.txt")
-            with open(persona_file, "w") as pf:
-                pf.write(new_prompt)
-            os.remove("/tmp/mirror_proposed_prompt.txt")
-            # Restart services to pick up the change
-            import subprocess
-            subprocess.run(["sudo", "systemctl", "restart", "jeeves-web"])
-            subprocess.run(["sudo", "pkill", "-9", "-f", "jeeves_telegram.py"])
-            subprocess.run(["nohup", "python3", os.path.expanduser("~/jeeves_telegram.py"), ">", "/dev/null", "2>&1", "&"])
-            return "Persona updated, sir. The butler will now speak with the new tone."
-        except Exception as e:
-            return f"Mirror confirm error: {e}"
-    elif cmd == "/mirror_cancel":
-        if os.path.exists("/tmp/mirror_proposed_prompt.txt"):
-            os.remove("/tmp/mirror_proposed_prompt.txt")
-        return "Persona change cancelled, sir."
     elif cmd == "/crypto-strat":
         try:
             with open(os.path.expanduser("~/crypto_strategy_feedback.log"), "r") as f:
@@ -134,14 +156,14 @@ Please produce a revised prompt that addresses the feedback while preserving the
             return "[]"
     elif cmd == "/crypto-strat_summary":
         try:
-            with open(os.path.expanduser("~/crypto_sim_strategy.txt"), "r") as f:
+            with open(config.CRYPTO_STRATEGY_FILE, "r") as f:
                 return f.read().strip()
         except:
             return "No strategy file found."
     elif cmd == "/crypto-strat_apply":
         try:
             fb_path = os.path.expanduser("~/crypto_strategy_feedback.log")
-            strat_path = os.path.expanduser("~/crypto_sim_strategy.txt")
+            strat_path = config.CRYPTO_STRATEGY_FILE
             with open(fb_path, "r") as f:
                 entries = f.readlines()
             if not entries:
@@ -168,7 +190,7 @@ Please produce a revised prompt that addresses the feedback while preserving the
     elif cmd == "/crypto-strat_save":
         try:
             import shutil
-            shutil.copy(os.path.expanduser("~/crypto_sim_strategy.txt"), os.path.expanduser("~/crypto_sim_strategy_default.txt"))
+            shutil.copy(config.CRYPTO_STRATEGY_FILE, os.path.expanduser("~/crypto_sim_strategy_default.txt"))
             return "Current strategy saved as your personal baseline."
         except Exception as e:
             return f"Error saving baseline: {e}"
@@ -177,7 +199,7 @@ Please produce a revised prompt that addresses the feedback while preserving the
             def_path = os.path.expanduser("~/crypto_sim_strategy_default.txt")
             if os.path.exists(def_path):
                 import shutil
-                shutil.copy(def_path, os.path.expanduser("~/crypto_sim_strategy.txt"))
+                shutil.copy(def_path, config.CRYPTO_STRATEGY_FILE)
                 return "Your saved baseline has been restored."
             else:
                 return "No saved baseline found."
@@ -194,7 +216,7 @@ Rules:
 - Maximum 5 trades per day.
 - Paper trade only until the system demonstrates a positive return over 30 days."""
         try:
-            with open(os.path.expanduser("~/crypto_sim_strategy.txt"), "w") as f:
+            with open(config.CRYPTO_STRATEGY_FILE, "w") as f:
                 f.write(factory)
             def_path = os.path.expanduser("~/crypto_sim_strategy_default.txt")
             if os.path.exists(def_path):
@@ -202,54 +224,9 @@ Rules:
             return "Factory strategy restored. Any saved baseline has been removed."
         except Exception as e:
             return f"Error: {e}"
-
-        return None
-    cmd = parts[0].lower()
-    # Mirror commands
-    if cmd == "/mirror":
-            pass
-        except:
-                return "The Mirror is full (3 entries). Please use the Refine Persona button on the Mirror tab, or perform a Factory Reset to discard all pending feedback."
-            if len(pending) >= 3:
-                pending = f.readlines()
-            with open(MIRROR_LOG, "r") as f:
-        try:
-        # Cap at 3 pending entries
-        if len(parts) > 1:
-            note = parts[1]
-            log_mirror(note)
-            return "Noted, sir. Your feedback has been logged in the Gentleman's Mirror."
-        else:
-            return "What shall I record, sir? Use /mirror <your note>."
-    elif cmd == "/mirror_read":
-        try:
-            with open(MIRROR_LOG, "r") as f:
-                lines = f.readlines()[-5:]
-            if lines:
-                return "Recent mirror entries:\n" + "".join(lines)
-            else:
-                return "The mirror is empty, sir."
-        except FileNotFoundError:
-            return "The mirror is empty, sir."
-    # Email commands
+    # Email commands (stubbed)
     elif cmd == "/email":
-        rest = parts[1] if len(parts) > 1 else ''
-        sub_parts = rest.split(maxsplit=1)
-        sub_cmd = sub_parts[0].lower() if sub_parts else ''
-        if sub_cmd == "check":
-            return email_skill.check_email()
-        elif sub_cmd == "send":
-            rest_body = sub_parts[1] if len(sub_parts) > 1 else ''
-            match = re.match(r'^(\S+)\s+([^|]+)\s*\|\s*(.*)', rest_body)
-            if match:
-                to_addr, subject, body = match.groups()
-                return email_skill.send_email(to_addr, subject, body)
-            else:
-                return "Usage: /email send <to> <subject> | <body>"
-        elif sub_cmd == "draft":
-            return "Drafting is not yet wired to the LLM, sir. I will note the request."
-        else:
-            return "Available email commands: check, send, draft."
+        return "Email module not yet available, sir."
     # Lake command
     elif cmd == "/lake":
         if len(parts) > 1:
@@ -262,26 +239,26 @@ Rules:
         sub_parts = rest.split(maxsplit=1)
         sub_cmd = sub_parts[0].lower() if sub_parts else ''
         if sub_cmd == "account":
-            return trading_skill.get_account()
+            return trading_advisor.get_account()
         elif sub_cmd == "positions":
-            return trading_skill.get_positions()
+            return trading_advisor.get_positions()
         elif sub_cmd == "buy":
             args = sub_parts[1] if len(sub_parts) > 1 else ''
             try:
                 symbol, qty = args.split()
-                return trading_skill.place_order(symbol.upper(), int(qty), "buy")
+                return trading_advisor.place_order(symbol.upper(), int(qty), "buy")
             except:
                 return "Usage: /trade buy <symbol> <quantity>"
         elif sub_cmd == "sell":
             args = sub_parts[1] if len(sub_parts) > 1 else ''
             try:
                 symbol, qty = args.split()
-                return trading_skill.place_order(symbol.upper(), int(qty), "sell")
+                return trading_advisor.place_order(symbol.upper(), int(qty), "sell")
             except:
                 return "Usage: /trade sell <symbol> <quantity>"
         elif sub_cmd == "price":
             symbol = sub_parts[1] if len(sub_parts) > 1 else ''
-            return trading_skill.get_market_price(symbol.upper()) if symbol else "Specify a symbol, sir."
+            return trading_advisor.get_market_price(symbol.upper()) if symbol else "Specify a symbol, sir."
         else:
             return "Available trade commands: account, positions, buy, sell, price."
     elif cmd == "/crypto":
@@ -289,26 +266,26 @@ Rules:
         sub_parts = rest.split(maxsplit=1)
         sub_cmd = sub_parts[0].lower() if sub_parts else ''
         if sub_cmd == "account":
-            return crypto_skill.get_account()
+            return crypto_sim.get_account()
         elif sub_cmd == "positions":
-            return crypto_skill.get_positions()
+            return crypto_sim.get_positions()
         elif sub_cmd == "buy":
             args = sub_parts[1] if len(sub_parts) > 1 else ''
             try:
                 symbol, qty = args.split()
-                return crypto_skill.place_order(symbol.upper(), float(qty), "buy")
+                return crypto_sim.place_order(symbol.upper(), float(qty), "buy")
             except:
                 return "Usage: /crypto buy <symbol> <quantity>"
         elif sub_cmd == "sell":
             args = sub_parts[1] if len(sub_parts) > 1 else ''
             try:
                 symbol, qty = args.split()
-                return crypto_skill.place_order(symbol.upper(), float(qty), "sell")
+                return crypto_sim.place_order(symbol.upper(), float(qty), "sell")
             except:
                 return "Usage: /crypto sell <symbol> <quantity>"
         elif sub_cmd == "price":
             symbol = sub_parts[1] if len(sub_parts) > 1 else ''
-            return crypto_skill.get_price(symbol.upper()) if symbol else "Specify a symbol, sir."
+            return crypto_sim.get_price(symbol.upper()) if symbol else "Specify a symbol, sir."
         else:
             return "Available crypto commands: account, positions, buy, sell, price."
     return None

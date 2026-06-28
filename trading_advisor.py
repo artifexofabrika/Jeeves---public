@@ -1,36 +1,19 @@
 import requests, json, os, datetime, time, sys, re
+import config
 
-LLM_URL = "http://localhost:8080/v1/chat/completions"
+LLM_URL = config.LLM_URL
 ALPACA_BASE = "https://paper-api.alpaca.markets"
-API_KEY = None
-SECRET_KEY = None
-STRATEGY_FILE = os.path.expanduser("~/trading_strategy.txt")
-MIRROR_LOG = os.path.expanduser("~/trading_mirror.log")
+API_KEY = config.ALPACA_API_KEY
+SECRET_KEY = config.ALPACA_SECRET_KEY
+STRATEGY_FILE = config.TRADING_STRATEGY_FILE
+MIRROR_LOG = config.TRADING_MIRROR_LOG
 MAX_DAILY_TRADES = 2
 MAX_ORDER_VALUE = 5000
-TELEGRAM_BOT_TOKEN = None
-CHAT_ID = None
+TELEGRAM_BOT_TOKEN = config.BOT_TOKEN
+CHAT_ID = config.CHAT_ID
 
-# Load Alpaca keys from trading_skill.py
-try:
-    import trading_skill
-    API_KEY = trading_skill.API_KEY
-    SECRET_KEY = trading_skill.SECRET_KEY
-except:
-    print("Error: trading_skill.py not found or missing keys.")
-    sys.exit(1)
-
-# Safely read Telegram credentials from the bridge file without executing it
-bridge_path = os.path.expanduser("~/jeeves_telegram.py")
-if os.path.exists(bridge_path):
-    with open(bridge_path, "r") as f:
-        bridge_text = f.read()
-        token_match = re.search(r'BOT_TOKEN\s*=\s*"([^"]+)"', bridge_text)
-        chat_match = re.search(r'CHAT_ID\s*=\s*(\d+)', bridge_text)
-        if token_match:
-            TELEGRAM_BOT_TOKEN = token_match.group(1)
-        if chat_match:
-            CHAT_ID = int(chat_match.group(1))
+if not API_KEY or not SECRET_KEY:
+    print("Warning: Alpaca keys not set. Trading functions will fail if called.")
 
 def alpaca_headers():
     return {
@@ -57,6 +40,14 @@ def get_bars(symbol, days=5):
     )
     return resp.json().get("bars", []) if resp.ok else []
 
+def get_market_price(symbol):
+    """Return the latest close price for a symbol."""
+    bars = get_bars(symbol, days=1)
+    if bars:
+        return bars[-1]['c']
+    else:
+        return None
+
 def place_order(symbol, qty, side):
     data = {"symbol": symbol, "qty": qty, "side": side, "type": "market", "time_in_force": "day"}
     resp = requests.post(f"{ALPACA_BASE}/v2/orders", json=data, headers=alpaca_headers())
@@ -78,18 +69,18 @@ def send_telegram(message):
 
 def main():
     log("=== Trading Advisor Run ===")
-    
+
     if not os.path.exists(STRATEGY_FILE):
         log("Error: Strategy file not found.")
         return
     with open(STRATEGY_FILE, 'r') as f:
         strategy = f.read()
-    
+
     account = get_account()
     positions = get_positions()
     cash = float(account.get("cash", 0))
     portfolio_value = float(account.get("portfolio_value", 0))
-    
+
     data_summary = f"Cash: ${cash:.2f}\nPortfolio value: ${portfolio_value:.2f}\n\n"
     if positions:
         data_summary += "Current positions:\n"
@@ -98,11 +89,11 @@ def main():
             data_summary += f"current price ${pos['current_price']}, P/L ${pos['unrealized_pl']}\n"
     else:
         data_summary += "No current positions.\n"
-    
+
     watchlist = list(set(re.findall(r'\b[A-Z]{1,5}\b', strategy)))
     skip_words = {"I", "ETF", "SMA", "LLM", "API", "JSON", "P/L", "ID", "URL"}
     watchlist = [w for w in watchlist if w not in skip_words]
-    
+
     if watchlist:
         data_summary += "\nRecent price action:\n"
         for sym in watchlist[:5]:
@@ -110,7 +101,7 @@ def main():
             if bars:
                 closes = [b['c'] for b in bars[-5:]]
                 data_summary += f"{sym}: last 5 closes: {closes}\n"
-    
+
     prompt = f"""You are a disciplined trading advisor. Your role is to analyze the following data and the user's strategy, then produce a specific trade recommendation in JSON format.
 
 Strategy:
@@ -123,7 +114,7 @@ Based on the strategy and current data, what trade action do you recommend? Resp
 {{"action": "buy" or "sell" or "hold", "symbol": "TICKER", "quantity": integer, "rationale": "brief explanation"}}
 
 If you recommend no action, set action to "hold" and quantity to 0. Do not include any text outside the JSON."""
-    
+
     try:
         resp = requests.post(LLM_URL, json={
             "model": "llama",
@@ -144,7 +135,7 @@ If you recommend no action, set action to "hold" and quantity to 0. Do not inclu
                     symbol = rec.get("symbol", "").upper()
                     qty = int(rec.get("quantity", 0))
                     rationale = rec.get("rationale", "")
-                    
+
                     if action in ("buy", "sell") and qty > 0:
                         today = datetime.date.today().isoformat()
                         with open(MIRROR_LOG, 'r') as f:
@@ -157,7 +148,7 @@ If you recommend no action, set action to "hold" and quantity to 0. Do not inclu
                         if price * qty > MAX_ORDER_VALUE:
                             log(f"Order value exceeds limit. Skipping {action} {symbol}.")
                             return
-                        
+
                         order = place_order(symbol, qty, action)
                         if "id" in order:
                             log(f"Order executed: {action} {qty} {symbol} - {rationale}")

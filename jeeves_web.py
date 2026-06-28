@@ -1,13 +1,14 @@
 import os, datetime, re, json, subprocess, requests
-from flask import Flask, render_template_string, request, jsonify
-import email_skill, trading_skill, crypto_sim, chromadb
+from flask import Flask, render_template_string, request, jsonify, send_file
+import crypto_sim, trading_advisor, config
+import chromadb
 from chromadb.utils import embedding_functions
 
 app = Flask(__name__)
 
-LLM_URL = "http://localhost:8080/v1/chat/completions"
-MIRROR_LOG = os.path.expanduser("~/mirror.log")
-PERSONA_FILE = os.path.expanduser("~/jeeves_persona.txt")
+LLM_URL = config.LLM_URL
+MIRROR_LOG = config.MIRROR_LOG
+PERSONA_FILE = config.PERSONA_FILE
 
 if not os.path.exists(PERSONA_FILE):
     with open(PERSONA_FILE, 'w') as pf:
@@ -33,7 +34,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Jeeves - Personal AI Valet</title>
     <link rel="icon" type="image/png" href="/favicon.png">
-    <link rel="icon" type="image/png" href="data:image/png;base64,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">
+    <link rel="icon" type="image/png" href="data:image/png;base64,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">
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #1a1a1a; color: #d4d4d4; height: 100vh; display: flex; flex-direction: column; }
@@ -185,20 +186,27 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         }
         async function refinePersona() {
             document.getElementById('mirrorPersonaPanel').textContent = 'Refining...';
-            const reply = await (await fetch('http://192.168.232.100:5001/refine_persona', { method: 'POST' })).json();
-            document.getElementById('mirrorPersonaPanel').textContent = reply.reply;
+            const resp = await fetch('/refine_persona', { method: 'POST' });
+            const data = await resp.json();
+            document.getElementById('mirrorPersonaPanel').textContent = data.reply;
             setTimeout(loadMirrorPanel, 3000);
         }
-        async function saveDefault() { alert((await (await fetch('http://192.168.232.100:5001/save_default', { method: 'POST' })).json()).reply); }
+        async function saveDefault() {
+            const resp = await fetch('/save_default', { method: 'POST' });
+            const data = await resp.json();
+            alert(data.reply);
+        }
         async function reloadSaved() {
-            const reply = await (await fetch('http://192.168.232.100:5001/reload_saved', { method: 'POST' })).json();
-            document.getElementById('mirrorPersonaPanel').textContent = reply.reply;
+            const resp = await fetch('/reload_saved', { method: 'POST' });
+            const data = await resp.json();
+            document.getElementById('mirrorPersonaPanel').textContent = data.reply;
             setTimeout(loadMirrorPanel, 3000);
         }
         async function factoryReset() {
             if (!confirm('Erase persona and saved default?')) return;
-            const reply = await (await fetch('http://192.168.232.100:5001/factory_reset', { method: 'POST' })).json();
-            document.getElementById('mirrorPersonaPanel').textContent = reply.reply;
+            const resp = await fetch('/factory_reset', { method: 'POST' });
+            const data = await resp.json();
+            document.getElementById('mirrorPersonaPanel').textContent = data.reply;
             setTimeout(loadMirrorPanel, 3000);
         }
 
@@ -303,52 +311,35 @@ def handle_command(user_input):
             return "Current persona: " + persona_text
         except Exception as e:
             return f"Unable to read persona file: {e}"
-    # Email
+    # Email (stubbed)
     elif cmd == "/email":
-        rest = parts[1] if len(parts) > 1 else ''
-        sub_parts = rest.split(maxsplit=1)
-        sub_cmd = sub_parts[0].lower() if sub_parts else ''
-        if sub_cmd == "check":
-            return email_skill.check_email()
-        elif sub_cmd == "send":
-            rest_body = sub_parts[1] if len(sub_parts) > 1 else ''
-            match = re.match(r'^(\S+)\s+([^|]+)\s*\|\s*(.*)', rest_body)
-            if match:
-                to_addr, subject, body = match.groups()
-                return email_skill.send_email(to_addr, subject, body)
-            return "Usage: /email send <to> <subject> | <body>"
-        elif sub_cmd == "delete":
-            if len(sub_parts) > 1:
-                sender = sub_parts[1]
-                return email_skill.delete_from_sender(sender)
-            return "Whose messages shall I delete, sir?"
-        return "Available email commands: check, send, delete."
-    # Trading
+        return "Email module not yet available, sir."
+    # Trading (via trading_advisor)
     elif cmd == "/trade":
         rest = parts[1] if len(parts) > 1 else ''
         sub_parts = rest.split(maxsplit=1)
         sub_cmd = sub_parts[0].lower() if sub_parts else ''
         if sub_cmd == "account":
-            return trading_skill.get_account()
+            return trading_advisor.get_account()
         elif sub_cmd == "positions":
-            return trading_skill.get_positions()
+            return trading_advisor.get_positions()
         elif sub_cmd == "buy":
             args = sub_parts[1] if len(sub_parts) > 1 else ''
             try:
                 symbol, qty = args.split()
-                return trading_skill.place_order(symbol.upper(), int(qty), "buy")
+                return trading_advisor.place_order(symbol.upper(), int(qty), "buy")
             except:
                 return "Usage: /trade buy <symbol> <quantity>"
         elif sub_cmd == "sell":
             args = sub_parts[1] if len(sub_parts) > 1 else ''
             try:
                 symbol, qty = args.split()
-                return trading_skill.place_order(symbol.upper(), int(qty), "sell")
+                return trading_advisor.place_order(symbol.upper(), int(qty), "sell")
             except:
                 return "Usage: /trade sell <symbol> <quantity>"
         elif sub_cmd == "price":
             symbol = sub_parts[1] if len(sub_parts) > 1 else ''
-            return trading_skill.get_market_price(symbol.upper()) if symbol else "Specify a symbol, sir."
+            return trading_advisor.get_market_price(symbol.upper()) if symbol else "Specify a symbol, sir."
         return "Available trade commands: account, positions, buy, sell, price."
     # Lake
     elif cmd == "/lake":
@@ -485,20 +476,29 @@ def ask_llm(question):
     except Exception as e:
         return f"I apologize, sir. An error occurred: {e}"
 
+# Mirror refinement routes (stubbed for now)
+@app.route('/refine_persona', methods=['POST'])
+def refine_persona():
+    return jsonify({'reply': 'Persona refinement via the web is not yet implemented, sir.'})
+
+@app.route('/save_default', methods=['POST'])
+def save_default():
+    return jsonify({'reply': 'Save default not yet implemented.'})
+
+@app.route('/reload_saved', methods=['POST'])
+def reload_saved():
+    return jsonify({'reply': 'Reload saved not yet implemented.'})
+
+@app.route('/factory_reset', methods=['POST'])
+def factory_reset():
+    return jsonify({'reply': 'Factory reset not yet implemented.'})
 
 @app.route('/landing')
 def landing():
-    from flask import send_file
     return send_file(os.path.expanduser('~/landing.html'))
-
-
-    from flask import send_file
-    return send_file(os.path.expanduser('~/favicon.ico'), mimetype='image/x-icon')
-
 
 @app.route('/favicon.png')
 def favicon():
-    from flask import send_file
     return send_file(os.path.expanduser('~/favicon.png'), mimetype='image/png')
 
 if __name__ == "__main__":

@@ -1,6 +1,9 @@
 import requests, json, os, datetime, time, sys, re
-VAULT_PATH = os.path.expanduser('~/crypto_sim_vault.json')
 import crypto_sim
+import config
+
+VAULT_PATH = os.path.expanduser('~/crypto_sim_vault.json')
+
 def load_vault():
     if os.path.exists(VAULT_PATH):
         with open(VAULT_PATH, 'r') as f:
@@ -11,26 +14,14 @@ def save_vault(vault):
     with open(VAULT_PATH, 'w') as f:
         json.dump(vault, f)
 
-LLM_URL = "http://localhost:8080/v1/chat/completions"
-STRATEGY_FILE = os.path.expanduser("~/crypto_sim_strategy.txt")
-MIRROR_LOG = os.path.expanduser("~/crypto_sim_mirror.log")
+LLM_URL = config.LLM_URL
+STRATEGY_FILE = config.CRYPTO_STRATEGY_FILE
+MIRROR_LOG = config.CRYPTO_MIRROR_LOG
 MAX_DAILY_TRADES = 5
 MAX_OPEN_POSITIONS = 3
 MAX_RISK_PER_TRADE = 0.02  # 2% of simulated equity
-TELEGRAM_BOT_TOKEN = None
-CHAT_ID = None
-
-# Safely read Telegram credentials from the bridge file
-bridge_path = os.path.expanduser("~/jeeves_telegram.py")
-if os.path.exists(bridge_path):
-    with open(bridge_path, "r") as f:
-        bridge_text = f.read()
-        token_match = re.search(r'BOT_TOKEN\s*=\s*"([^"]+)"', bridge_text)
-        chat_match = re.search(r'CHAT_ID\s*=\s*(\d+)', bridge_text)
-        if token_match:
-            TELEGRAM_BOT_TOKEN = token_match.group(1)
-        if chat_match:
-            CHAT_ID = int(chat_match.group(1))
+TELEGRAM_BOT_TOKEN = config.BOT_TOKEN
+CHAT_ID = config.CHAT_ID
 
 def log(message):
     timestamp = datetime.datetime.now().isoformat()
@@ -48,13 +39,13 @@ def send_telegram(message):
 
 def main():
     log("=== Crypto-Sim Advisor Run ===")
-    
+
     if not os.path.exists(STRATEGY_FILE):
         log("Error: Crypto strategy file not found. Please create ~/crypto_sim_strategy.txt")
         return
     with open(STRATEGY_FILE, 'r') as f:
         strategy = f.read()
-    
+
     account_info = crypto_sim.get_account()
     positions_info = crypto_sim.get_positions()
     # Parse equity from account string (simple extraction)
@@ -76,10 +67,10 @@ def main():
         log(f"Ratchet triggered: core capital increased to ${new_core:.2f}, secured vault now ${new_secured:.2f}")
         core_capital = new_core
         secured_vault = new_secured
-    
+
     data_summary = f"Cash: ${cash:.2f}\nEquity: ${equity:.2f}\n\n"
     data_summary += positions_info
-    
+
     prompt = f"""You are a disciplined crypto trading advisor. Analyze the following data against the user's strategy and recommend a trade in JSON format.
 
 Strategy:
@@ -92,7 +83,7 @@ Respond ONLY with a JSON object in this exact format:
 {{"action": "buy" or "sell" or "hold", "symbol": "SYMBOL/USD", "quantity": float, "rationale": "brief explanation"}}
 
 If no trade, set action to "hold" and quantity to 0."""
-    
+
     try:
         resp = requests.post(LLM_URL, json={
             "model": "llama",
@@ -113,7 +104,7 @@ If no trade, set action to "hold" and quantity to 0."""
                     symbol = rec.get("symbol", "").upper()
                     qty = float(rec.get("quantity", 0))
                     rationale = rec.get("rationale", "")
-                    
+
                     if action in ("buy", "sell") and qty > 0:
                         # Risk checks
                         today = datetime.date.today().isoformat()
@@ -143,7 +134,7 @@ If no trade, set action to "hold" and quantity to 0."""
                             if qty > max_qty:
                                 log(f"Reducing quantity from {qty} to {max_qty:.4f} due to risk limits.")
                                 qty = max_qty
-                        
+
                         # Execute simulated order
                         result = crypto_sim.place_order(symbol, qty, action)
                         log(f"Order result: {result}")
