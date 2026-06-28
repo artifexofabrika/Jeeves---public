@@ -3,6 +3,7 @@ import requests, os, datetime, sys, io, re
 import chromadb
 from chromadb.utils import embedding_functions
 import trading_advisor
+import mirror_engine
 import config
 
 # Force UTF-8
@@ -234,6 +235,18 @@ Rules:
             return handle_lake_search(query)
         else:
             return "What shall I search for, sir? e.g., /lake Stoic philosophy"
+    elif cmd == "/trade-mirror":
+        if len(parts) > 1:
+            note = parts[1]
+            mirror_engine.log_feedback(config.TRADING_MIRROR_LOG, note)
+            return "Trading feedback logged, sir."
+        return "What feedback shall I record for the trading strategy?"
+    elif cmd == "/trade-mirror_read":
+        entries = mirror_engine.read_feedback(config.TRADING_MIRROR_LOG, n=3)
+        if entries:
+            return "Recent trading feedback:\n" + "\n".join(entries)
+        return "No trading feedback, sir."
+
     elif cmd == "/trade":
         rest = parts[1] if len(parts) > 1 else ''
         sub_parts = rest.split(maxsplit=1)

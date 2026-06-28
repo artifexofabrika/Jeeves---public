@@ -38,14 +38,40 @@ def get_updates(offset=None):
         print(f"Update error: {e}")
         return []
 
+def ask_jeeves(question):
+    """Fallback to the LLM for non-command messages."""
+    import config as cfg
+    persona_file = cfg.PERSONA_FILE
+    try:
+        with open(persona_file, 'r') as f:
+            persona = f.read().strip()
+    except:
+        persona = "You are Jeeves, a calm, erudite personal valet."
+    resp = requests.post(LLM_URL, json={
+        "model": "llama",
+        "messages": [
+            {"role":"system","content":persona},
+            {"role":"user","content":question}
+        ],
+        "temperature":0.7, "max_tokens":300
+    }, timeout=90)
+    if resp.ok:
+        return resp.json()["choices"][0]["message"]["content"]
+    return "I am momentarily indisposed, sir."
+
 def process_message(text):
     if not text:
         return "I didn't catch that, sir."
+    # Try command handler first
     try:
         from jeeves_chat import handle_command
-        return handle_command(text)
+        cmd_result = handle_command(text)
+        if cmd_result is not None:
+            return cmd_result
     except ImportError as e:
-        return f"Command handling not available: {e}"
+        print(f"Command handling import error: {e}")
+    # Fallback to LLM
+    return ask_jeeves(text)
 
 def main():
     print("Telegram bridge starting...")

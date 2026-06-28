@@ -261,7 +261,6 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             }, 10000);
         };
     </script>
-<script src="/static/trading.js"></script>
 </body>
 </html>
 """
@@ -578,8 +577,6 @@ def landing():
 def favicon():
     return send_file(os.path.expanduser('~/favicon.png'), mimetype='image/png')
 
-from trading_blueprint import trading_bp
-app.register_blueprint(trading_bp)
 if __name__ == "__main__":
     print("Jeeves web interface starting on http://0.0.0.0:5000")
     app.run(host="0.0.0.0", port=5000, debug=False)

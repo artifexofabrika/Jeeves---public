@@ -76,7 +76,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     <div class="middle-area">
         <div class="tab-buttons">
             <button class="tab active" data-tab="mirror" onclick="showTab('mirror')">🪞 Mirror</button>
-            <button class="tab" data-tab="cryptostrat" onclick="showTab('cryptostrat')">📈 Trading Strat</button>
+            <button class="tab" data-tab="cryptostrat" onclick="showTab('cryptostrat')">📈 Crypto Strat</button>
             <button class="tab" data-tab="account" onclick="showTab('account')">💼 Account</button>
             <button class="tab" data-tab="email" onclick="showTab('email')">📧 Inbox</button>
             <button class="tab" data-tab="lake" onclick="showTab('lake')">🌊 Lake</button>
@@ -220,27 +220,17 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         }
         async function refineCryptoStrat() {
             document.getElementById('cryptoStratSummary').textContent = 'Refining...';
-            const resp = await fetch('/trading_refine', { method: 'POST' });
-            const data = await resp.json();
-            document.getElementById('cryptoStratSummary').textContent = data.reply;
+            document.getElementById('cryptoStratSummary').textContent = await fetchCommand('/crypto-strat_apply');
             loadCryptoStrat();
         }
-        async function saveCryptoStrat() {
-            const resp = await fetch('/trading_save', { method: 'POST' });
-            const data = await resp.json();
-            alert(data.reply);
-        }
+        async function saveCryptoStrat() { alert(await fetchCommand('/crypto-strat_save')); }
         async function reloadCryptoStrat() {
-            const resp = await fetch('/trading_reload', { method: 'POST' });
-            const data = await resp.json();
-            document.getElementById('cryptoStratSummary').textContent = data.reply;
+            document.getElementById('cryptoStratSummary').textContent = await fetchCommand('/crypto-strat_reload');
             loadCryptoStrat();
         }
         async function factoryResetCryptoStrat() {
             if (!confirm('Restore factory strategy?')) return;
-            const resp = await fetch('/trading_reset', { method: 'POST' });
-            const data = await resp.json();
-            document.getElementById('cryptoStratSummary').textContent = data.reply;
+            document.getElementById('cryptoStratSummary').textContent = await fetchCommand('/crypto-strat_factory_reset');
             loadCryptoStrat();
         }
 
@@ -261,7 +251,6 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             }, 10000);
         };
     </script>
-<script src="/static/trading.js"></script>
 </body>
 </html>
 """
@@ -490,85 +479,19 @@ def ask_llm(question):
 # Mirror refinement routes (stubbed for now)
 @app.route('/refine_persona', methods=['POST'])
 def refine_persona():
-    """Generate a persona revision and apply it immediately, clearing feedback."""
-    import mirror_engine
-    llm = config.LLM_URL
-    active = mirror_engine.persona_active_path()
-    log = mirror_engine.persona_log_path()
-    instruction = "You are a system prompt editor. Revise the current persona text based on user feedback."
-    proposed, error = mirror_engine.apply_feedback(log, active, llm, system_instruction=instruction, max_tokens=300, temperature=0.7)
-    if error:
-        return jsonify({"reply": f"Refinement failed: {error}"})
-    # Apply immediately and clear the feedback log
-    msg = mirror_engine.confirm_apply(proposed, active, log)
-    return jsonify({"reply": proposed})
+    return jsonify({'reply': 'Persona refinement via the web is not yet implemented, sir.'})
 
 @app.route('/save_default', methods=['POST'])
 def save_default():
-    """Save the current active persona as a personal baseline."""
-    import mirror_engine
-    active = mirror_engine.persona_active_path()
-    saved = mirror_engine.persona_saved_path()
-    msg = mirror_engine.save_baseline(active, saved)
-    return jsonify({"reply": msg})
+    return jsonify({'reply': 'Save default not yet implemented.'})
 
 @app.route('/reload_saved', methods=['POST'])
 def reload_saved():
-    """Restore the personal baseline persona."""
-    import mirror_engine
-    active = mirror_engine.persona_active_path()
-    saved = mirror_engine.persona_saved_path()
-    msg = mirror_engine.reload_baseline(saved, active)
-    return jsonify({"reply": msg})
+    return jsonify({'reply': 'Reload saved not yet implemented.'})
 
 @app.route('/factory_reset', methods=['POST'])
 def factory_reset():
-    """Restore the factory default persona (and overwrite saved baseline)."""
-    import mirror_engine
-    active = mirror_engine.persona_active_path()
-    saved = mirror_engine.persona_saved_path()
-    factory = mirror_engine.persona_factory_path()
-    msg = mirror_engine.factory_reset(factory, active, saved)
-    return jsonify({"reply": msg})
-
-
-@app.route('/trading_refine', methods=['POST'])
-def trading_refine():
-    import mirror_engine
-    llm = config.LLM_URL
-    active = mirror_engine.trading_active_path()
-    log = mirror_engine.trading_log_path()
-    instruction = "You are a trading strategy editor. Revise the current strategy based on user feedback."
-    proposed, error = mirror_engine.apply_feedback(log, active, llm, system_instruction=instruction, max_tokens=400, temperature=0.7)
-    if error:
-        return jsonify({"reply": f"Refinement failed: {error}"})
-    mirror_engine.confirm_apply(proposed, active, log)
-    return jsonify({"reply": proposed})
-
-@app.route('/trading_save', methods=['POST'])
-def trading_save():
-    import mirror_engine
-    active = mirror_engine.trading_active_path()
-    saved = mirror_engine.trading_saved_path()
-    msg = mirror_engine.save_baseline(active, saved)
-    return jsonify({"reply": msg})
-
-@app.route('/trading_reload', methods=['POST'])
-def trading_reload():
-    import mirror_engine
-    active = mirror_engine.trading_active_path()
-    saved = mirror_engine.trading_saved_path()
-    msg = mirror_engine.reload_baseline(saved, active)
-    return jsonify({"reply": msg})
-
-@app.route('/trading_reset', methods=['POST'])
-def trading_reset():
-    import mirror_engine
-    active = mirror_engine.trading_active_path()
-    saved = mirror_engine.trading_saved_path()
-    factory = mirror_engine.trading_factory_path()
-    msg = mirror_engine.factory_reset(factory, active, saved)
-    return jsonify({"reply": msg})
+    return jsonify({'reply': 'Factory reset not yet implemented.'})
 
 @app.route('/landing')
 def landing():
@@ -578,8 +501,6 @@ def landing():
 def favicon():
     return send_file(os.path.expanduser('~/favicon.png'), mimetype='image/png')
 
-from trading_blueprint import trading_bp
-app.register_blueprint(trading_bp)
 if __name__ == "__main__":
     print("Jeeves web interface starting on http://0.0.0.0:5000")
     app.run(host="0.0.0.0", port=5000, debug=False)
