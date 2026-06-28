@@ -172,7 +172,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         }
 
         async function loadEmail() { document.getElementById('tab-email').textContent = await fetchCommand('/email check'); }
-        async function loadAccount() { document.getElementById('tab-account').textContent = await fetchCommand('/trade account'); }
+        async function loadAccount() {            const resp = await fetch('/account_summary');            const text = await resp.text();            document.getElementById('tab-account').textContent = text;        }
         async function loadLake() { document.getElementById('tab-lake').textContent = await fetchCommand('/lake good service'); }
 
         // === Mirror ===
@@ -569,6 +569,28 @@ def trading_reset():
     factory = mirror_engine.trading_factory_path()
     msg = mirror_engine.factory_reset(factory, active, saved)
     return jsonify({"reply": msg})
+
+@app.route("/account_summary")
+def account_summary():
+    import trading_advisor
+    account = trading_advisor.get_account()
+    positions = trading_advisor.get_positions()
+    if not account:
+        return "Alpaca account not accessible."
+    lines = []
+    lines.append(f"Portfolio Value: ${float(account.get('portfolio_value', 0)):,.2f}")
+    lines.append(f"Cash: ${float(account.get('cash', 0)):,.2f}")
+    if positions:
+        lines.append("\nHoldings:")
+        for p in positions:
+            symbol = p.get('symbol', "?")
+            qty = p.get('qty', "0")
+            mkt_val = float(p.get('market_value', 0))
+            unreal_pl = float(p.get('unrealized_pl', 0))
+            lines.append(f"  {symbol}: {qty} shares | Value ${mkt_val:,.2f} | Unrealized P/L ${unreal_pl:+,.2f}")
+    else:
+        lines.append("\nNo current positions.")
+    return "\n".join(lines)
 
 @app.route('/landing')
 def landing():

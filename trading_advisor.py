@@ -84,6 +84,33 @@ def daily_loss_exceeded():
     return False  # placeholder
 
 def main():
+    # Daily loss limit: store start-of-day equity in ~/trading_daily_equity.json
+    import json
+    daily_file = os.path.expanduser("~/trading_daily_equity.json")
+    today = datetime.date.today().isoformat()
+    daily_data = {}
+    if os.path.exists(daily_file):
+        with open(daily_file) as f:
+            daily_data = json.load(f)
+    if daily_data.get("date") != today:
+        # First run of the day: capture current equity
+        try:
+            acc = get_account()
+            start_equity = float(acc.get("portfolio_value", 0))
+            if start_equity:
+                daily_data = {"date": today, "start_equity": start_equity}
+                with open(daily_file, "w") as f:
+                    json.dump(daily_data, f)
+                log(f"Start-of-day equity captured: ${start_equity:,.2f}")
+        except:
+            pass
+    # Check loss limit
+    start_equity = daily_data.get("start_equity", None)
+    if start_equity and portfolio_value < start_equity * (1 - MAX_DAILY_LOSS):
+        log(f"Daily loss limit breached. Start: ${start_equity:,.2f}, Current: ${portfolio_value:,.2f}")
+        send_telegram("Trading halted: daily loss limit reached.")
+        return
+
     check_kill_switch()
     log("=== Trading Advisor Run ===")
 
