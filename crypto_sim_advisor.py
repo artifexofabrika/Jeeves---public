@@ -3,6 +3,7 @@ import crypto_sim
 import config
 
 VAULT_PATH = os.path.expanduser('~/crypto_sim_vault.json')
+KILL_SWITCH_FILE = os.path.expanduser("~/crypto_sim_kill_switch")
 
 def load_vault():
     if os.path.exists(VAULT_PATH):
@@ -25,6 +26,7 @@ CHAT_ID = config.CHAT_ID
 
 def log(message):
     timestamp = datetime.datetime.now().isoformat()
+    os.makedirs(os.path.dirname(MIRROR_LOG) or '.', exist_ok=True)
     with open(MIRROR_LOG, "a") as f:
         f.write(f"{timestamp} | {message}\n")
     print(message)
@@ -37,18 +39,25 @@ def send_telegram(message):
         except:
             pass
 
+def check_kill_switch():
+    if os.path.exists(KILL_SWITCH_FILE):
+        log("Crypto kill switch active. Trading halted.")
+        send_telegram("Crypto advisor halted by kill switch.")
+        sys.exit(0)
+
 def main():
+    check_kill_switch()
     log("=== Crypto-Sim Advisor Run ===")
 
     if not os.path.exists(STRATEGY_FILE):
-        log("Error: Crypto strategy file not found. Please create ~/crypto_sim_strategy.txt")
+        log("Error: Crypto strategy file not found.")
         return
     with open(STRATEGY_FILE, 'r') as f:
         strategy = f.read()
 
     account_info = crypto_sim.get_account()
     positions_info = crypto_sim.get_positions()
-    # Parse equity from account string (simple extraction)
+    # Parse equity from account string
     equity_match = re.search(r'Equity: \$(\d+\.\d+)', account_info)
     equity = float(equity_match.group(1)) if equity_match else 100.0
     cash_match = re.search(r'Cash: \$(\d+\.\d+)', account_info)
@@ -71,6 +80,9 @@ def main():
     data_summary = f"Cash: ${cash:.2f}\nEquity: ${equity:.2f}\n\n"
     data_summary += positions_info
 
+    # Lake context (placeholder)
+    lake_context = ""
+
     prompt = f"""You are a disciplined crypto trading advisor. Analyze the following data against the user's strategy and recommend a trade in JSON format.
 
 Strategy:
@@ -79,7 +91,10 @@ Strategy:
 Current state:
 {data_summary}
 
-Respond ONLY with a JSON object in this exact format:
+Lake notes:
+{lake_context}
+
+Respond ONLY with a SINGLE JSON object, never multiple. The object must follow this exact format:
 {{"action": "buy" or "sell" or "hold", "symbol": "SYMBOL/USD", "quantity": float, "rationale": "brief explanation"}}
 
 If no trade, set action to "hold" and quantity to 0."""

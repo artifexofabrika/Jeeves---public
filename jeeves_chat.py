@@ -235,6 +235,16 @@ Rules:
             return handle_lake_search(query)
         else:
             return "What shall I search for, sir? e.g., /lake Stoic philosophy"
+    elif cmd == "/trade-halt":
+        with open(os.path.expanduser("~/trading_kill_switch"), "w") as f:
+            f.write("halted")
+        return "Trading advisor halted, sir."
+    elif cmd == "/trade-resume":
+        kill_path = os.path.expanduser("~/trading_kill_switch")
+        if os.path.exists(kill_path):
+            os.remove(kill_path)
+        return "Trading advisor resumed, sir."
+
     elif cmd == "/trade-mirror":
         if len(parts) > 1:
             note = parts[1]
@@ -274,6 +284,26 @@ Rules:
             return trading_advisor.get_market_price(symbol.upper()) if symbol else "Specify a symbol, sir."
         else:
             return "Available trade commands: account, positions, buy, sell, price."
+    elif cmd == "/crypto-halt":
+        with open(os.path.expanduser("~/crypto_sim_kill_switch"), "w") as f:
+            f.write("halted")
+        return "Crypto advisor halted, sir."
+    elif cmd == "/crypto-resume":
+        kill_path = os.path.expanduser("~/crypto_sim_kill_switch")
+        if os.path.exists(kill_path):
+            os.remove(kill_path)
+        return "Crypto advisor resumed, sir."
+
+    elif cmd == "/crypto-halt":
+        with open(os.path.expanduser("~/crypto_sim_kill_switch"), "w") as f:
+            f.write("halted")
+        return "Crypto advisor halted, sir."
+    elif cmd == "/crypto-resume":
+        kill_path = os.path.expanduser("~/crypto_sim_kill_switch")
+        if os.path.exists(kill_path):
+            os.remove(kill_path)
+        return "Crypto advisor resumed, sir."
+
     elif cmd == "/crypto":
         rest = parts[1] if len(parts) > 1 else ''
         sub_parts = rest.split(maxsplit=1)

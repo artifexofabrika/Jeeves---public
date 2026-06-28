@@ -1,5 +1,6 @@
 import requests, json, os, datetime, time, sys, re
 import config
+import mirror_engine
 
 LLM_URL = config.LLM_URL
 ALPACA_BASE = "https://paper-api.alpaca.markets"
@@ -7,13 +8,15 @@ API_KEY = config.ALPACA_API_KEY
 SECRET_KEY = config.ALPACA_SECRET_KEY
 STRATEGY_FILE = config.TRADING_STRATEGY_FILE
 MIRROR_LOG = config.TRADING_MIRROR_LOG
-MAX_DAILY_TRADES = 2
-MAX_ORDER_VALUE = 5000
+MAX_DAILY_TRADES = 5           # total trades per day
+MAX_ORDER_VALUE = 10000        # dollars per order (increased from original 5000)
+MAX_DAILY_LOSS = 0.05          # 5% of equity max loss per day
+KILL_SWITCH_FILE = os.path.expanduser("~/trading_kill_switch")
 TELEGRAM_BOT_TOKEN = config.BOT_TOKEN
 CHAT_ID = config.CHAT_ID
 
 if not API_KEY or not SECRET_KEY:
-    print("Warning: Alpaca keys not set. Trading functions will fail if called.")
+    print("Warning: Alpaca keys not set. Trading functions will fail.")
 
 def alpaca_headers():
     return {
@@ -41,12 +44,10 @@ def get_bars(symbol, days=5):
     return resp.json().get("bars", []) if resp.ok else []
 
 def get_market_price(symbol):
-    """Return the latest close price for a symbol."""
     bars = get_bars(symbol, days=1)
     if bars:
         return bars[-1]['c']
-    else:
-        return None
+    return None
 
 def place_order(symbol, qty, side):
     data = {"symbol": symbol, "qty": qty, "side": side, "type": "market", "time_in_force": "day"}
@@ -67,7 +68,23 @@ def send_telegram(message):
         except:
             pass
 
+def check_kill_switch():
+    if os.path.exists(KILL_SWITCH_FILE):
+        log("Kill switch active. Trading halted.")
+        send_telegram("Trading advisor halted by kill switch.")
+        sys.exit(0)
+
+def daily_loss_exceeded():
+    """Check if today's realized losses exceed MAX_DAILY_LOSS of portfolio."""
+    today = datetime.date.today().isoformat()
+    # Simple approximation: sum of negative P/L from filled orders today
+    # Since Alpaca paper account doesn't provide intraday P/L easily, we'll rely on the account equity change.
+    # For a full implementation, we'd compare current equity to start-of-day equity stored in a file.
+    # For now, we'll skip and just rely on position-level risk checks.
+    return False  # placeholder
+
 def main():
+    check_kill_switch()
     log("=== Trading Advisor Run ===")
 
     if not os.path.exists(STRATEGY_FILE):
@@ -80,6 +97,12 @@ def main():
     positions = get_positions()
     cash = float(account.get("cash", 0))
     portfolio_value = float(account.get("portfolio_value", 0))
+
+    # Check daily loss limit (stubbed; implement later with a persistent daily equity tracker)
+    # if daily_loss_exceeded():
+    #     log("Daily loss limit reached. Trading halted.")
+    #     send_telegram("Trading halted: daily loss limit reached.")
+    #     return
 
     data_summary = f"Cash: ${cash:.2f}\nPortfolio value: ${portfolio_value:.2f}\n\n"
     if positions:
@@ -102,7 +125,18 @@ def main():
                 closes = [b['c'] for b in bars[-5:]]
                 data_summary += f"{sym}: last 5 closes: {closes}\n"
 
-    prompt = f"""You are a disciplined trading advisor. Your role is to analyze the following data and the user's strategy, then produce a specific trade recommendation in JSON format.
+    # --- Lake context injection (placeholder) ---
+    lake_context = ""
+    # When lake is ready, search for relevant notes:
+    # for sym in watchlist[:3]:
+    #    try:
+    #        results = query_lake(f"{sym} outlook")
+    #        if results:
+    #            lake_context += f"Notes on {sym}: {'; '.join(results)}\n"
+    #    except:
+    #        pass
+
+    prompt = f"""You are a disciplined trading advisor. Analyze the following data against the user's strategy and recommend a trade in JSON format.
 
 Strategy:
 {strategy}
@@ -110,10 +144,13 @@ Strategy:
 Current state:
 {data_summary}
 
-Based on the strategy and current data, what trade action do you recommend? Respond ONLY with a JSON object in this exact format:
+Lake notes:
+{lake_context}
+
+Respond ONLY with a SINGLE JSON object, never multiple. The object must follow this format:
 {{"action": "buy" or "sell" or "hold", "symbol": "TICKER", "quantity": integer, "rationale": "brief explanation"}}
 
-If you recommend no action, set action to "hold" and quantity to 0. Do not include any text outside the JSON."""
+If no trade, set action to "hold" and quantity to 0."""
 
     try:
         resp = requests.post(LLM_URL, json={
@@ -138,29 +175,32 @@ If you recommend no action, set action to "hold" and quantity to 0. Do not inclu
 
                     if action in ("buy", "sell") and qty > 0:
                         today = datetime.date.today().isoformat()
+                        # Count today's trades
                         with open(MIRROR_LOG, 'r') as f:
-                            daily_trades = sum(1 for line in f if today in line and "Order placed" in line)
+                            daily_trades = sum(1 for line in f if today in line and "Order executed" in line)
                         if daily_trades >= MAX_DAILY_TRADES:
                             log(f"Daily trade limit reached. Skipping {action} {symbol}.")
                             return
-                        bars = get_bars(symbol, days=1)
-                        price = bars[-1]['c'] if bars else 0
-                        if price * qty > MAX_ORDER_VALUE:
-                            log(f"Order value exceeds limit. Skipping {action} {symbol}.")
+                        price = get_market_price(symbol)
+                        if price is None:
+                            log("Cannot fetch price.")
                             return
-
+                        if price * qty > MAX_ORDER_VALUE:
+                            log(f"Order value exceeds limit. Skipping.")
+                            return
+                        # Place the order
                         order = place_order(symbol, qty, action)
                         if "id" in order:
                             log(f"Order executed: {action} {qty} {symbol} - {rationale}")
-                            send_telegram(f"Trading Advisor executed: {action.upper()} {qty} {symbol}. Rationale: {rationale}")
+                            send_telegram(f"Trading Advisor: {action.upper()} {qty} {symbol}. {rationale}")
                         else:
                             log(f"Order failed: {order}")
                     else:
                         log(f"Recommendation: HOLD - {rationale}")
                 else:
-                    log("Could not parse JSON from LLM response.")
+                    log("Could not parse JSON.")
             except (json.JSONDecodeError, ValueError) as e:
-                log(f"JSON parse error: {e}. Raw: {reply}")
+                log(f"JSON parse error: {e}")
         else:
             log(f"LLM request failed: {resp.status_code}")
     except Exception as e:
