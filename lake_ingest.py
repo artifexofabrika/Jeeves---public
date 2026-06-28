@@ -1,133 +1,158 @@
-import os, sys, time, re
+#!/usr/bin/env python3
+"""
+Jeeves Knowledge Lake Ingest
+- Reads files from LAKE_INBOX_DIR (default ~/lake_inbox)
+- Splits text into chunks with overlap
+- Embeds chunks locally (no LLM)
+- Stores in ChromaDB collection 'memory_lake'
+- Skips already ingested files (by SHA256 hash)
+- Throttles with a configurable delay
+"""
+
+import os, sys, json, hashlib, time, datetime
+from pathlib import Path
 import chromadb
 from chromadb.utils import embedding_functions
 
-RAW_DIR = "/mnt/lake/raw"
-PROCESSED_DIR = "/mnt/lake/processed"
-INDEX_DIR = "/mnt/lake/index"
-CHUNK_WORDS = 500          # target words per chunk
-MIN_FILE_SIZE_BYTES = 50 * 1024  # 50 KB – anything smaller is indexed whole
+# ---------- Configuration ----------
+INBOX_DIR = os.path.expanduser(os.getenv("LAKE_INBOX_DIR", "~/lake_inbox"))
+CHUNK_SIZE = 1000          # characters per chunk
+CHUNK_OVERLAP = 200        # character overlap
+INGEST_DELAY = float(os.getenv("LAKE_INGEST_DELAY", "0.5"))  # seconds between chunks
+INGESTED_DB = os.path.expanduser("~/lake_ingested.json")
+LAKE_INDEX_PATH = os.path.expanduser(os.getenv("LAKE_INDEX_PATH", "/mnt/lake/index"))
+LOG_FILE = os.path.expanduser("~/lake_ingest.log")
 
-# Embedding engine
-ef = embedding_functions.SentenceTransformerEmbeddingFunction(model_name="all-MiniLM-L6-v2")
+# Ensure inbox exists
+os.makedirs(INBOX_DIR, exist_ok=True)
+os.makedirs(LAKE_INDEX_PATH, exist_ok=True)
 
-client = chromadb.PersistentClient(path=INDEX_DIR)
-collection = client.get_or_create_collection(name="memory_lake", embedding_function=ef)
+# ---------- ChromaDB Setup ----------
+embedding_fn = embedding_functions.SentenceTransformerEmbeddingFunction(
+    model_name="all-MiniLM-L6-v2"
+)
+client = chromadb.PersistentClient(path=LAKE_INDEX_PATH)
+collection = client.get_or_create_collection(
+    name="memory_lake",
+    embedding_function=embedding_fn
+)
 
-def chunk_text(text, max_words=CHUNK_WORDS):
-    """
-    Split text into chunks of roughly max_words.
-    Tries to break at paragraph boundaries first, then at sentences, then hard break.
-    Returns a list of chunks.
-    """
-    paragraphs = text.split('\n\n')
-    chunks = []
-    current_chunk = ""
-    current_words = 0
+# ---------- Utility Functions ----------
+def log(msg):
+    timestamp = datetime.datetime.now().isoformat()
+    line = f"{timestamp} | {msg}"
+    print(line)
+    with open(LOG_FILE, "a") as f:
+        f.write(line + "\n")
 
-    for para in paragraphs:
-        para = para.strip()
-        if not para:
-            continue
-        para_words = len(para.split())
-        # If adding this paragraph exceeds the limit, store current chunk and start new
-        if current_words + para_words > max_words and current_words > 0:
-            chunks.append(current_chunk.strip())
-            current_chunk = para
-            current_words = para_words
-        else:
-            if current_chunk:
-                current_chunk += "\n\n" + para
-            else:
-                current_chunk = para
-            current_words += para_words
+def file_hash(filepath):
+    """Return SHA256 hex digest of file."""
+    h = hashlib.sha256()
+    with open(filepath, "rb") as f:
+        for chunk in iter(lambda: f.read(65536), b""):
+            h.update(chunk)
+    return h.hexdigest()
 
-        # If current chunk itself is too big, break it further by sentences
-        while current_words > max_words:
-            sentences = re.split(r'(?<=[.!?]) +', current_chunk)
-            new_chunk = ""
-            new_words = 0
-            for sent in sentences:
-                sent_words = len(sent.split())
-                if new_words + sent_words > max_words and new_words > 0:
-                    chunks.append(new_chunk.strip())
-                    new_chunk = sent
-                    new_words = sent_words
-                else:
-                    new_chunk = (new_chunk + " " + sent).strip()
-                    new_words += sent_words
-            current_chunk = new_chunk
-            current_words = new_words
-            # Safety break if a single sentence is still over limit
-            if len(sentences) == 1 and current_words > max_words:
-                # Hard break by words
-                words = current_chunk.split()
-                while len(words) > max_words:
-                    chunks.append(" ".join(words[:max_words]))
-                    words = words[max_words:]
-                current_chunk = " ".join(words)
-                current_words = len(words)
-                break
+def load_ingested_db():
+    if os.path.exists(INGESTED_DB):
+        with open(INGESTED_DB, "r") as f:
+            return json.load(f)
+    return {}
 
-    if current_chunk.strip():
-        chunks.append(current_chunk.strip())
-    return chunks
+def save_ingested_db(db):
+    with open(INGESTED_DB, "w") as f:
+        json.dump(db, f, indent=2)
 
-def process_file(filepath):
-    filename = os.path.basename(filepath)
-    # Only process .txt files
-    if not filename.endswith('.txt'):
+def split_text(text, size=CHUNK_SIZE, overlap=CHUNK_OVERLAP):
+    """Yield chunks of text with overlap."""
+    if len(text) <= size:
+        yield text
+        return
+    start = 0
+    while start < len(text):
+        end = start + size
+        yield text[start:end]
+        start += (size - overlap)
+
+# ---------- Main Ingestion ----------
+def main():
+    import fcntl
+    lock_path = os.path.expanduser("~/lake_ingest.lock")
+    with open(lock_path, "w") as lf:
+        try:
+            fcntl.flock(lf, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            log("Ingestion already in progress; exiting.")
+            return
+
+    log("Lake ingestion started.")
+    inbox = Path(INBOX_DIR)
+    files = list(inbox.rglob("*"))
+    if not files:
+        log("No files found in inbox.")
         return
 
-    # Check file size
-    size = os.path.getsize(filepath)
-    if size > MIN_FILE_SIZE_BYTES:
-        # Large file – read, chunk, index each chunk separately
+    ingested_db = load_ingested_db()
+    total_chunks = 0
+    new_files = 0
+
+    for filepath in files:
+        if not filepath.is_file():
+            continue
+        # Only process text-like files (add more extensions as needed)
+        if filepath.suffix.lower() not in [".txt", ".md", ".csv", ".json"]:
+            continue
+
+        abs_path = str(filepath.resolve())
+        fhash = file_hash(abs_path)
+
+        if abs_path in ingested_db and ingested_db[abs_path] == fhash:
+            log(f"Skipping (unchanged): {filepath.name}")
+            continue
+
+        log(f"Ingesting: {filepath.name}")
         try:
-            with open(filepath, 'r', encoding='utf-8') as f:
-                content = f.read()
-            if not content.strip():
-                return
-            chunks = chunk_text(content)
-            base_name = os.path.splitext(filename)[0]
-            for i, chunk in enumerate(chunks):
-                doc_id = f"{base_name}_chunk_{i:04d}"
+            text = filepath.read_text(encoding="utf-8", errors="ignore")
+        except Exception as e:
+            log(f"  Error reading file: {e}")
+            continue
+
+        chunks = list(split_text(text))
+        log(f"  Split into {len(chunks)} chunks.")
+
+        for i, chunk in enumerate(chunks):
+            meta = {
+                "filename": filepath.name,
+                "source_path": abs_path,
+                "chunk_index": i,
+                "ingested_at": datetime.datetime.now().isoformat(),
+                "hash": fhash
+            }
+            # ChromaDB expects unique IDs; we use file hash + chunk index
+            doc_id = f"{fhash}_{i}"
+            # Avoid re-adding if already present (though full file check handles most)
+            try:
                 collection.add(
                     documents=[chunk],
+                    metadatas=[meta],
                     ids=[doc_id]
                 )
-            print(f"Indexed {len(chunks)} chunks from {filename}")
-            # Remove original large file from raw (it's been indexed)
-            os.remove(filepath)
-        except Exception as e:
-            print(f"Error processing {filename}: {e}")
-    else:
-        # Small file – index whole
-        try:
-            with open(filepath, 'r', encoding='utf-8') as f:
-                content = f.read()
-            if not content.strip():
-                return
-            # Use filename (without extension) as ID
-            doc_id = os.path.splitext(filename)[0]
-            collection.add(
-                documents=[content],
-                ids=[doc_id]
-            )
-            # Move file to processed
-            dest = os.path.join(PROCESSED_DIR, filename)
-            os.rename(filepath, dest)
-            print(f"Indexed: {filename}")
-        except Exception as e:
-            print(f"Error processing {filename}: {e}")
+            except Exception as e:
+                log(f"  Error adding chunk {i}: {e}")
+                time.sleep(1)  # brief pause on error
+                continue
+
+            total_chunks += 1
+            if INGEST_DELAY > 0:
+                time.sleep(INGEST_DELAY)
+
+        # Mark file as ingested
+        ingested_db[abs_path] = fhash
+        new_files += 1
+
+    save_ingested_db(ingested_db)
+    log(f"Ingestion complete. {new_files} new/updated files, {total_chunks} total chunks added.")
+    return total_chunks
 
 if __name__ == "__main__":
-    print("Lake ingestion running (with auto‑chunking). Drop .txt files into /mnt/lake/raw.")
-if __name__ == "__main__":
-    while True:
-    if os.path.isdir(RAW_DIR):
-        for filename in os.listdir(RAW_DIR):
-            filepath = os.path.join(RAW_DIR, filename)
-            if os.path.isfile(filepath):
-                process_file(filepath)
-    time.sleep(5)
+    main()

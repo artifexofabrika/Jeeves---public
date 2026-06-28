@@ -83,6 +83,15 @@ def daily_loss_exceeded():
     # For now, we'll skip and just rely on position-level risk checks.
     return False  # placeholder
 
+def query_lake(query, n=3):
+    import chromadb
+    from chromadb.utils import embedding_functions
+    ef = embedding_functions.SentenceTransformerEmbeddingFunction(model_name="all-MiniLM-L6-v2")
+    client = chromadb.PersistentClient(path="/mnt/lake/index")
+    collection = client.get_or_create_collection(name="memory_lake", embedding_function=ef)
+    results = collection.query(query_texts=[query], n_results=n)
+    return results.get("documents", [[]])[0]
+
 def main():
     # Daily loss limit: store start-of-day equity in ~/trading_daily_equity.json
     import json
@@ -154,6 +163,12 @@ def main():
 
     # --- Lake context injection (placeholder) ---
     lake_context = ""
+    # Query lake for each watchlist symbol
+    for sym in watchlist[:3]:
+        snippets = query_lake(f"{sym} trading outlook")
+        if snippets:
+            lake_context += f"Lake notes on {sym}: {chr(10).join(snippets)}
+
     # When lake is ready, search for relevant notes:
     # for sym in watchlist[:3]:
     #    try:

@@ -80,8 +80,11 @@ def main():
     data_summary = f"Cash: ${cash:.2f}\nEquity: ${equity:.2f}\n\n"
     data_summary += positions_info
 
-    # Lake context (placeholder)
+    import lake_utils
     lake_context = ""
+    snippets = lake_utils.query_lake("crypto market outlook", n=2)
+    if snippets:
+        lake_context += "\n".join(snippets)
 
     prompt = f"""You are a disciplined crypto trading advisor. Analyze the following data against the user's strategy and recommend a trade in JSON format.
 
