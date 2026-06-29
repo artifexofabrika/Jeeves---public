@@ -16,6 +16,11 @@ CHAT_ID = int(os.getenv("CHAT_ID", "0"))
 # Alpaca
 ALPACA_API_KEY = os.getenv("ALPACA_API_KEY")
 ALPACA_SECRET_KEY = os.getenv("ALPACA_SECRET_KEY")
+# Web search
+WEB_SEARCH_ENABLED = os.getenv("WEB_SEARCH_ENABLED", "false").lower() == "true"
+WEB_SEARCH_PROVIDER = os.getenv("WEB_SEARCH_PROVIDER", "")
+BRAVE_SEARCH_API_KEY = os.getenv("BRAVE_SEARCH_API_KEY")
+
 
 # LLM
 LLM_URL = os.getenv("LLM_URL", "http://localhost:8080/v1/chat/completions")

@@ -6,6 +6,40 @@ app = Flask(__name__)
 LLM_URL = "http://localhost:8080/v1/chat/completions"
 PERSONA_FILE = os.path.expanduser("~/demo_persona.txt")
 
+
+# Hard‑coded demo facts – broad triggers for absolute reliability.
+DEMO_FACTS = [
+    (["what are you", "who are you", "introduce yourself", "about yourself"],
+     "I am Jeeves, the demonstration digital valet of the Artifexo Fabrika project. I am a self‑hosted, air‑gapped AI. I can chat and search a small knowledge lake. The full product adds trading, email, and the Persona Mirror. This is a one‑time‑purchase device with no subscription."),
+    (["capabilities", "what can you do", "features", "functionality", "abilities", "what are your abilities"],
+     "In this demo I can chat with you and search a small sample knowledge lake. The full Jeeves product includes:\n"
+     "• Private knowledge lake for your documents, notes, and research\n"
+     "• Stock and crypto trading with strategy mirroring (Alpaca & CoinGecko paper accounts)\n"
+     "• Email assistant — read, summarise, and draft emails with your approval\n"
+     "• Persona Mirror — refine my personality, tone, and form of address over time\n"
+     "• Telegram & web dashboard interfaces\n"
+     "• Air‑gapped, self‑hosted, no subscription — you own the device and your data."),
+    (["security", "secure", "safety", "safe", "hack", "protect", "privacy", "how do you protect", "how are you secure", "is it safe"],
+     "This demo has no authentication and uses unencrypted HTTP, because it is a public showcase. The production Jeeves device is air‑gapped, fully encrypted, authenticated, and stores all data locally. No cloud, no subscription. The open‑source code can be independently audited."),
+    (["how will they be addressed", "how will you address", "address security", "how will security be addressed", "what security measures", "what protections", "address the security"],
+     "In the production release, Jeeves will include HTTPS encryption, dashboard authentication, secure session management, encrypted token storage, and air‑gapped operation with no cloud dependencies. The open‑source code will be available for independent security auditing. This demo lacks those protections by design; it is a showcase only."),
+    (["air gap", "air gapped", "air-gapped", "standalone", "offline"],
+     "The production Jeeves is completely air‑gapped. It never phones home, uses no cloud services, and stores all data on the device. There is no subscription; it is a one‑time purchase. The device operates offline except for explicitly configured services like a broker API."),
+    (["subscription", "monthly fee", "recurring", "price", "cost", "payment"],
+     "Jeeves has no subscription. It is a one‑time purchase. The device runs entirely offline, with no monthly fees, no cloud dependencies, and no hidden costs. You own the hardware and the software permanently."),
+    (["artifexo", "fabrika", "project", "who made you", "who created you", "company"],
+     "Artifexo Fabrika is the project behind Jeeves. It is dedicated to building private, self‑hosted AI valets that respect user sovereignty. No cloud, no subscription, open‑source core."),
+    (["raspberry pi", "pi based", "raspberry", "what hardware"],
+     "The demonstration prototype may reference older hardware, but the production Jeeves runs on a Jetson Orin Nano, a powerful AI edge device. It is air‑gapped, fully self‑hosted, and requires no cloud connection."),
+
+    (["upgrade", "upgradable", "update", "maintenance", "new hardware", "migrate", "port to new hardware"],
+     "The Jeeves software is designed to be portable. When newer hardware (such as the NVIDIA Jetson Thor) becomes available, your entire configuration, persona, lake, and strategies can be easily migrated to the new device. The system itself is air‑gapped and self‑contained; it does not require ongoing external updates or maintenance."),
+
+    (["how do i interact", "interact with you", "interface", "ways to communicate", "how to reach you", "telegram", "dashboard", "production interface", "how to use production"],
+     "You can interact with Jeeves through a private web dashboard, a dedicated Telegram bot, or this web chat interface. The full product includes all three. This public demo provides only the web chat you are using right now."),
+]
+
+
 def load_persona():
     if os.path.exists(PERSONA_FILE):
         with open(PERSONA_FILE) as f:
@@ -134,7 +168,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         </div>
         <div class="tab-content">
             <div id="tab-mirror" class="panel" style="display: block;">
-                <div>🪞 Gentleman's Mirror – Available in the full product. You can refine the AI's persona through feedback loops.</div>
+                <div>🪞 Persona Mirror – Available in the full product. You can refine the AI's persona through feedback loops.</div>
             </div>
             <div id="tab-cryptostrat" class="panel" style="display: none;">
                 <div>📈 Trading Strategy – Create and refine strategies with a Mirror‑governed feedback loop. Available in the full product.</div>
@@ -220,18 +254,24 @@ def index():
 def chat():
     data = request.get_json()
     user_msg = data.get('message', '')
-    # Always inject lake context for non‑command messages to ground the response
-    if not user_msg.startswith('/'):
-        context = get_lake_context(user_msg, n=2)
-        if context:
-            user_msg = f"Using ONLY the following information from the knowledge lake, answer the user's question. If the information does not contain the answer, say so. Do not invent facts.\n\nLake information:\n{context}\n\nUser question: {user_msg}"
+    lower_msg = user_msg.lower()
+    # Check hard‑coded facts first (broad triggers)
+    for triggers, answer in DEMO_FACTS:
+        if any(trigger in lower_msg for trigger in triggers):
+            return jsonify({'reply': answer})
+    # For /lake commands, use the command handler
     if user_msg.startswith('/'):
         reply = handle_command(user_msg)
         if reply is None:
             reply = ask_llm(user_msg, address="sir")
     else:
+        # Inject lake context to keep the LLM factual
+        context = get_lake_context(user_msg, n=2)
+        if context:
+            user_msg = f"Using ONLY the following information, answer the user's question. Do not invent anything.\n\nInformation:\n{context}\n\nUser: {user_msg}"
         reply = ask_llm(user_msg, address="sir")
     return jsonify({'reply': reply})
+
 
 @app.route('/command', methods=['POST'])
 def command():

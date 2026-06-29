@@ -167,7 +167,7 @@ def main():
     for sym in watchlist[:3]:
         snippets = query_lake(f"{sym} trading outlook")
         if snippets:
-            lake_context += f"Lake notes on {sym}: {chr(10).join(snippets)}
+                lake_context += f"Lake notes on {sym}: " + "\n".join(snippets) + "\n"
 
     # When lake is ready, search for relevant notes:
     # for sym in watchlist[:3]:

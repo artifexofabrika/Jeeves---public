@@ -1,6 +1,6 @@
 import os, datetime, re, json, subprocess, requests
 from flask import Flask, render_template_string, request, jsonify, send_file
-import crypto_sim, trading_advisor, config
+import crypto_sim, trading_advisor, config, lake_utils, web_search
 import chromadb
 from chromadb.utils import embedding_functions
 
@@ -277,6 +277,24 @@ def chat():
     if user_msg.startswith('/'):
         reply = handle_command(user_msg)
     else:
+        # 1. Try to enrich with lake context (ignore if distance > 0.5)
+        lake_context = ""
+        try:
+            snippets, best_dist = lake_utils.query_lake(user_msg, n=3)
+            if snippets and best_dist < 0.5:
+                lake_context = "🌊 Private knowledge lake results:\n" + "\n".join(snippets)
+        except:
+            pass
+        # 2. If lake empty and web search enabled, fetch web snippets
+        if not lake_context and config.WEB_SEARCH_ENABLED:
+            web_results = web_search.search(user_msg, max_results=3, daily_limit=50)
+            if web_results:
+                lake_context = "📡 Web results (nothing in your private lake):\n"
+                for r in web_results:
+                    lake_context += f"- {r['title']}: {r['snippet']}\n"
+        # 3. Build final prompt
+        if lake_context:
+            user_msg = f"Using the following information, answer the user's question. If the information is not relevant, say so.\n\nInformation:\n{lake_context}\n\nUser question: {user_msg}"
         reply = ask_llm(user_msg)
     return jsonify({'reply': reply})
 

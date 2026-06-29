@@ -5,6 +5,7 @@ from chromadb.utils import embedding_functions
 import trading_advisor
 import mirror_engine
 import config
+import web_search
 
 # Force UTF-8
 sys.stdin = io.TextIOWrapper(sys.stdin.buffer, encoding='utf-8', errors='replace')
@@ -20,20 +21,32 @@ def log_mirror(note):
         f.write(f"{timestamp} | {note}\n")
 
 def handle_lake_search(query):
+    # Try lake first
+    lake_reply = None
     try:
         ef = embedding_functions.SentenceTransformerEmbeddingFunction(model_name="all-MiniLM-L6-v2")
         client = chromadb.PersistentClient(path="/mnt/lake/index")
         collection = client.get_or_create_collection(name="memory_lake", embedding_function=ef)
         results = collection.query(query_texts=[query], n_results=3)
         docs = results.get('documents', [[]])[0]
-        if not docs:
-            return "No relevant documents found in the Lake, sir."
-        reply = "🌊 Lake Results:\n"
-        for i, doc in enumerate(docs, 1):
-            reply += f"{i}. {doc[:300]}...\n\n" if len(doc) > 300 else f"{i}. {doc}\n\n"
-        return reply
-    except Exception as e:
-        return f"Lake search error: {e}"
+        if docs:
+            lake_reply = "🌊 Lake Results:\n"
+            for i, doc in enumerate(docs, 1):
+                lake_reply += f"{i}. {doc[:300]}...\n\n" if len(doc) > 300 else f"{i}. {doc}\n\n"
+            return lake_reply
+    except:
+        pass
+    # Lake empty – try web if enabled
+    if os.getenv("WEB_SEARCH_ENABLED", "false").lower() == "true":
+        web_results = web_search.search(query, 3)
+        if web_results:
+            reply = "📡 Web Results (nothing found in your private lake):\n"
+            for i, r in enumerate(web_results, 1):
+                reply += f"{i}. {r['title']}\n{r['snippet']}\n\n"
+            return reply
+        else:
+            return "No relevant documents found in the Lake, sir, and the web search returned no results."
+    return "No relevant documents found in the Lake, sir."
 
 def handle_command(user_input):
     parts = user_input.strip().split(maxsplit=1)
