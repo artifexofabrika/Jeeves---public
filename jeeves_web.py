@@ -67,7 +67,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             <div class="message jeeves">Good day, sir.</div>
         </div>
         <div class="chat-input">
-            <input type="text" id="userInput" placeholder="Speak to {AI_NAME}..." onkeypress="if(event.key==='Enter') sendMessage()">
+            <input type="text" id="userInput" placeholder="Speak to your valet..." onkeypress="if(event.key==='Enter') sendMessage()">
             <button onclick="sendMessage()">Send</button>
         </div>
     </div>
@@ -302,8 +302,8 @@ def chat():
         # --- Lake and web search as before ---
         lake_context = ""
         try:
-            snippets = lake_utils.query_lake(user_msg, n=3)
-            if snippets:
+            snippets, best_score = lake_utils.query_lake(user_msg, n=3)
+            if snippets and best_score < 0.6:
                 lake_context = "🌊 Private knowledge lake results:\n" + "\n".join(snippets)
         except:
             pass
@@ -322,6 +322,10 @@ def chat():
             all_context += lake_context + "\n\n"
         if all_context:
             user_msg = f"Using the following information, answer the user's question. If the information is not relevant, say so.\n\n{all_context}User question: {user_msg}"
+    with open(os.path.expanduser("~/chat_prompt.log"), "a") as pf:
+        pf.write(f"{datetime.datetime.now().isoformat()} PROMPT: {user_msg}\
+\
+")
         reply = ask_llm(user_msg)
 
         # --- Summarise this exchange and store it ---

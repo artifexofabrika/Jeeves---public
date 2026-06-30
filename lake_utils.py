@@ -44,52 +44,37 @@ def query_lake(query, n=3, semantic_weight=0.5, threshold=0.6):
     docs = results.get('documents', [[]])[0]
     distances = results.get('distances', [[1.0]])[0]
 
-    if not docs:
-        # fallback: try exact term search for non-stopwords in query
-        terms = [w.lower() for w in re.findall(r'[a-zA-Z]+', query) if w.lower() not in STOPWORDS]
-        extra_docs = []
-        for t in terms:
-            extra_docs.extend(_exact_term_search(t, collection, n=n))
-        if extra_docs:
-            # remove duplicates
-            seen = set()
-            unique = []
-            for d in extra_docs:
-                if d not in seen:
-                    seen.add(d)
-                    unique.append(d)
-            return unique[:n], 0.5  # moderate score
+    # Always collect exact‑term matches for non‑stopwords
+    terms = [w.lower() for w in re.findall(r'[a-zA-Z]+', query) if w.lower() not in STOPWORDS]
+    exact_docs = set()
+    for t in terms:
+        for d in _exact_term_search(t, collection, n=n):
+            exact_docs.add(d)
+
+    if not docs and not exact_docs:
         return [], 1.0
 
     scored = []
+    # Score semantic results
     for doc, dist in zip(docs, distances):
         kw = _keyword_overlap(query, doc)
         combined = semantic_weight * dist + (1.0 - semantic_weight) * (1.0 - kw)
         scored.append((combined, doc))
 
-    scored.sort(key=lambda x: x[0])
-    best_score = scored[0][0]
+    # Add exact‑term matches with a good score
+    for doc in exact_docs:
+        kw = _keyword_overlap(query, doc)
+        combined = semantic_weight * 0.8 + (1.0 - semantic_weight) * (1.0 - kw)
+        scored.append((combined, doc))
 
-    # If no document passes threshold, attempt exact‑term fallback for non‑stopwords
-    if best_score >= threshold or not any(doc for score, doc in scored if score < threshold):
-        terms = [w.lower() for w in re.findall(r'[a-zA-Z]+', query) if w.lower() not in STOPWORDS]
-        extra_docs = []
-        for t in terms:
-            extra_docs.extend(_exact_term_search(t, collection, n=n))
-        if extra_docs:
-            seen = set()
-            unique = []
-            for d in extra_docs:
-                if d not in seen:
-                    seen.add(d)
-                    unique.append(d)
-            # assign a moderate score
-            for d in unique:
-                scored.append((threshold - 0.1, d))
-            scored.sort(key=lambda x: x[0])
-            best_score = scored[0][0] if scored else 1.0
+    scored.sort(key=lambda x: x[0])
+    best_score = scored[0][0] if scored else 1.0
 
     filtered = [doc for score, doc in scored if score < threshold]
+    if not filtered and exact_docs:
+        # still return exact matches even if they don't beat threshold
+        filtered = list(exact_docs)[:n]
+        best_score = threshold - 0.1
     return filtered[:n], best_score if filtered else 1.0
 
 

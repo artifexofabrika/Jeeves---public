@@ -142,6 +142,8 @@ def main():
                 time.sleep(1)  # brief pause on error
                 continue
 
+            if total_chunks % 10 == 0 and total_chunks > 0:
+                log(f"  Progress: {total_chunks} chunks embedded...")
             total_chunks += 1
             if INGEST_DELAY > 0:
                 time.sleep(INGEST_DELAY)
