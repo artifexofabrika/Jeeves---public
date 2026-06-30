@@ -38,12 +38,12 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #1a1a1a; color: #d4d4d4; height: 100vh; display: flex; flex-direction: column; }
-        .top-bar { height: 50%; display: flex; flex-direction: column; border-bottom: 1px solid #444; background: #1e1e1e; }
+        .top-bar { height: 45%; display: flex; flex-direction: column; border-bottom: 1px solid #444; background: #1e1e1e; }
         .top-bar .chat-messages { flex: 1; overflow-y: auto; padding: 0.6rem; font-size: 0.9rem; }
         .top-bar .chat-input { display: flex; padding: 0.4rem; background: #2c2c2c; }
         .top-bar .chat-input input { flex: 1; padding: 0.4rem; background: #3c3c3c; border: 1px solid #555; color: #fff; border-radius: 4px; font-size: 0.85rem; }
         .top-bar .chat-input button { padding: 0.4rem 0.8rem; margin-left: 0.4rem; background: #c0a878; border: none; border-radius: 4px; cursor: pointer; color: #1a1a1a; font-weight: bold; font-size: 0.85rem; }
-        .middle-area { height: 40%; display: flex; flex-direction: column; border-bottom: 1px solid #444; }
+        .middle-area { height: 45%; display: flex; flex-direction: column; border-bottom: 1px solid #444; }
         .middle-area .tab-buttons { display: flex; flex-wrap: wrap; gap: 0.2rem; padding: 0.3rem 0.6rem; background: #2c2c2c; }
         .middle-area .tab { background: #3c3c3c; border: 1px solid #555; color: #d4d4d4; padding: 0.3rem 0.5rem; border-radius: 3px; cursor: pointer; font-size: 0.8rem; }
         .middle-area .tab.active { background: #c0a878; color: #1a1a1a; border-color: #c0a878; }
@@ -75,52 +75,66 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     <!-- Middle 50%: Active Skill Panel -->
     <div class="middle-area">
         <div class="tab-buttons">
-            <button class="tab active" data-tab="mirror" onclick="showTab('persona')">🪞 Mirror</button>
-            <button class="tab" data-tab="cryptostrat" onclick="showTab('cryptostrat')">📈 Trading Strat</button>
-            <button class="tab" data-tab="account" onclick="showTab('account')">💼 Account</button>
-            <button class="tab" data-tab="email" onclick="showTab('email')">📧 Inbox</button>
-            <button class="tab" data-tab="lake" onclick="showTab('lake')">🌊 Lake</button>
-        
-            <button class="tab" data-tab="persona" onclick="showTab('persona')">👤 Persona</button></div>
+            <button class="tab active" data-tab="persona" onclick="showTab('persona')">👤 Persona</button>
+            <button class="tab" data-tab="wellness" onclick="showTab('wellness')">💚 Wellness</button>
+            <button class="tab" data-tab="datalake" onclick="showTab('datalake')">🌊 Data Lake</button>
+            <button class="tab" data-tab="trading" onclick="showTab('trading')">📈 Trading</button>
+            <button class="tab" data-tab="email" onclick="showTab('email')">📧 Email</button>
+        </div>
         <div class="tab-content">
-            <div id="tab-mirror" class="panel" style="display: block;">
-                <div id="mirrorPersonaPanel" style="max-height: 100%; overflow-y: auto;">Loading persona...</div>
-                <div id="mirrorEntriesPanel" style="max-height: 120px; overflow-y: auto;">No entries.</div>
-                <div style="margin-top: 0.4rem; display: flex; gap: 0.3rem;">
-                    <button class="btn" onclick="refinePersona()">✨ Refine</button>
-                    <button class="btn" onclick="saveDefault()">💾 Save</button>
-                    <button class="btn" onclick="reloadSaved()">📂 Reload</button>
-                    <button class="btn" onclick="factoryReset()">⚠️ Reset</button>
-                </div>
-            </div>
-            
             <!-- Persona Module -->
-            <div id="tab-persona" class="panel" style="display: none;">
+            <div id="tab-persona" class="panel" style="display: flex; flex-direction: column;">
                 <div style="font-size:1.1rem;color:#c0a878;margin-bottom:0.5rem;">Current Persona</div>
-                <div id="personaSummary" style="background:#1e1e1e;padding:0.6rem;border-radius:4px;min-height:3rem;max-height:60%;overflow-y:auto;white-space:pre-wrap;">Loading...</div>
+                <div id="personaSummary" style="background:#1e1e1e;padding:0.6rem;border-radius:4px;min-height:3rem;overflow-y:auto;white-space:pre-wrap;flex:1;">Loading...</div>
                 <div style="margin-top:0.8rem;display:flex;gap:0.4rem;">
                     <input type="text" id="personaFeedbackInput" placeholder="Add feedback for the Mirror..." style="flex:1;padding:0.4rem;background:#2c2c2c;border:1px solid #555;color:#fff;border-radius:4px;font-size:0.85rem;" onkeypress="if(event.key==='Enter') submitFeedback()">
                     <button class="btn" onclick="submitFeedback()" style="flex-shrink:0;">✨ Refine</button>
                 </div>
-            </div><div id="tab-cryptostrat" class="panel" style="display: none;">
-                <div id="cryptoVaultDisplay" style="margin-bottom: 0.4rem;">Loading vault...</div>
-                <div id="cryptoStratSummary" style="max-height: 100%; overflow-y: auto;">Loading strategy...</div>
-                <div id="cryptoStratFeedback" style="max-height: 120px; overflow-y: auto;">No feedback.</div>
-                <div style="margin-top: 0.4rem; display: flex; gap: 0.3rem;">
-                    <button class="btn" onclick="refineCryptoStrat()">✨ Refine</button>
-                    <button class="btn" onclick="saveCryptoStrat()">💾 Save</button>
-                    <button class="btn" onclick="reloadCryptoStrat()">📂 Reload</button>
-                    <button class="btn" onclick="factoryResetCryptoStrat()">⚠️ Reset</button>
+            </div>
+            <!-- Wellness Module -->
+            <div id="tab-wellness" class="panel" style="display: none;">
+                <div style="text-align:center;padding:2rem;color:#888;">
+                    <div style="font-size:2rem;margin-bottom:0.5rem;">💚</div>
+                    <div>Wellness tracking is under development.</div>
+                    <div style="margin-top:1rem;font-size:0.85rem;">Health metrics, medication reminders, and journaling will appear here.</div>
                 </div>
             </div>
-            <div id="tab-account" class="panel" style="display: none;">Loading...</div>
-            <div id="tab-email" class="panel" style="display: none;">Loading...</div>
-            <div id="tab-lake" class="panel" style="display: none;">Loading...</div>
-        </div>
-    </div>
-
-    <!-- Bottom 25%: Command Palette -->
-    <div class="bottom-bar">
+            <!-- Data Lake Module -->
+            <div id="tab-datalake" class="panel" style="display: none;">
+                <div style="margin-bottom:1rem;">
+                    <div style="font-size:1.1rem;color:#c0a878;">Lake Search</div>
+                    <input type="text" id="lakeQuery" placeholder="Search your knowledge lake..." style="width:100%;padding:0.5rem;background:#2c2c2c;border:1px solid #555;color:#fff;border-radius:4px;margin-bottom:0.4rem;" onkeypress="if(event.key==='Enter') searchLake()">
+                    <button class="btn" onclick="searchLake()">🔍 Search</button>
+                </div>
+                <div id="lakeSearchResults" style="background:#1e1e1e;padding:0.6rem;border-radius:4px;min-height:3rem;white-space:pre-wrap;">Results will appear here.</div>
+                <div style="margin-top:1rem;font-size:0.85rem;color:#888;">
+                    <div id="ingestionStatus">Ingestion: check log for details.</div>
+                </div>
+            </div>
+            <!-- Trading Module -->
+            <div id="tab-trading" class="panel" style="display: none;">
+                <div style="margin-bottom:1rem;">
+                    <div style="font-size:1.1rem;color:#c0a878;">Stock Strategy</div>
+                    <div id="stockStrategySummary" style="background:#1e1e1e;padding:0.6rem;border-radius:4px;">Loading...</div>
+                </div>
+                <div style="margin-bottom:1rem;">
+                    <div style="font-size:1.1rem;color:#c0a878;">Crypto Strategy</div>
+                    <div id="cryptoStrategySummary" style="background:#1e1e1e;padding:0.6rem;border-radius:4px;">Loading...</div>
+                </div>
+                <div style="margin-bottom:1rem;">
+                    <div style="font-size:1.1rem;color:#c0a878;">Account</div>
+                    <div id="accountSummary" style="background:#1e1e1e;padding:0.6rem;border-radius:4px;">Loading...</div>
+                </div>
+            </div>
+            <!-- Email Module -->
+            <div id="tab-email" class="panel" style="display: none;">
+                <div style="text-align:center;padding:2rem;color:#888;">
+                    <div style="font-size:2rem;margin-bottom:0.5rem;">📧</div>
+                    <div>Email integration is under development.</div>
+                    <div style="margin-top:1rem;font-size:0.85rem;">Read, summarise, and draft emails with your approval.</div>
+                </div>
+            </div>
+        </div><div class="bottom-bar">
         <div class="btn-row"></div>
         <div class="status-panel">
             
@@ -167,12 +181,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 btn.classList.remove('active');
                 if (btn.getAttribute('data-tab') === tabName) btn.classList.add('active');
             });
-            if (tabName === 'email') loadEmail();
-            if (tabName === 'account') loadAccount();
-            if (tabName === 'mirror') loadMirrorPanel();
-            if (tabName === 'lake') loadLake();
-            if (tabName === 'cryptostrat') loadCryptoStrat();
             if (tabName === 'persona') { loadPersonaModule(); updateBottomBar('persona'); }
+            else if (tabName === 'trading') { loadTradingModule(); updateBottomBar('trading'); }
+            else if (tabName === 'datalake') { loadDatalakeModule(); updateBottomBar('datalake'); }
             else { updateBottomBar(tabName); }
         }
 
@@ -221,7 +232,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             document.getElementById('cryptoStratFeedback').textContent = await fetchCommand('/crypto-strat_read') || 'No feedback.';
             const vault = await fetchCommand('/crypto-vault');
             document.getElementById('cryptoVaultDisplay').textContent = vault || 'Vault: --';
-            
+            document.getElementById('vaultStatus').textContent = vault || 'Vault: --';
         }
         async function refineCryptoStrat() {
             document.getElementById('cryptoStratSummary').textContent = 'Refining...';
@@ -262,11 +273,12 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                     else if (tabName === 'account') loadAccount();
                     else if (tabName === 'email') loadEmail();
                     else if (tabName === 'lake') loadLake();
+            if (tabName === 'persona') { loadPersonaModule(); updateBottomBar('persona'); }
                 }
             }, 10000);
         };
     
-        // --- Persona Module functions ---
+        // --- Persona Module ---
         async function loadPersonaModule() {
             document.getElementById('personaSummary').textContent = await fetchCommand('/persona') || 'No persona.';
         }
@@ -297,18 +309,48 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         function updateBottomBar(tab) {
             const bar = document.querySelector('.bottom-bar .btn-row');
             if (!bar) return;
-            if (tab === 'persona') {
-                bar.innerHTML = `
-                    <button class="btn" onclick="saveMemory()">🧠 Save Memory</button>
-                    <button class="btn" onclick="reloadSaved()">📂 Restore Persona</button>
-                    <button class="btn" onclick="factoryReset()">⚠️ Reset Persona</button>
+            const bars = {
+                persona: `
+                    <button class="btn" onclick="saveMemory()">💾 Save Persona</button>
+                    <button class="btn" onclick="restoreMemory()">📂 Restore Persona</button>
+                    <button class="btn" onclick="resetPersona()">⚠️ Reset Persona</button>
                     <button class="btn" onclick="loadPersonaModule()">↻ Refresh</button>
-                `;
-            } else {
-                bar.innerHTML = '';
-            }
+                `,
+                wellness: '',
+                datalake: `
+                    <button class="btn" onclick="searchLake()">🔍 Search Lake</button>
+                    <button class="btn" disabled>📤 Upload (soon)</button>
+                `,
+                trading: `
+                    <button class="btn" onclick="sendCommand('/trade account')">💼 Portfolio</button>
+                    <button class="btn" onclick="sendCommand('/trade positions')">📊 Positions</button>
+                    <button class="btn" onclick="sendCommand('/crypto-sim account')">🪙 Crypto-Sim</button>
+                `,
+                email: ''
+            };
+            bar.innerHTML = bars[tab] || '';
         }
-</script>
+    
+        // --- Trading Module ---
+        async function loadTradingModule() {
+            document.getElementById('stockStrategySummary').textContent = await fetchCommand('/crypto-strat_summary') || 'No stock strategy.';
+            document.getElementById('cryptoStrategySummary').textContent = await fetchCommand('/crypto-strat_summary') || 'No crypto strategy.';
+            document.getElementById('accountSummary').textContent = await fetchCommand('/trade account') || 'Account unavailable.';
+        }
+        // --- Data Lake Module ---
+        async function loadDatalakeModule() {
+            document.getElementById('ingestionStatus').textContent = 'Place files in ~/lake_inbox and run lake_ingest.py manually.';
+        }
+        async function searchLake() {
+            const q = document.getElementById('lakeQuery').value.trim();
+            if (!q) return;
+            const resp = await fetchCommand('/lake ' + q);
+            document.getElementById('lakeSearchResults').textContent = resp;
+        }
+        // --- Ensure old loadEmail/loadAccount removed (no-op) ---
+        function loadEmail() {}
+        function loadAccount() {}
+    </script>
 </body>
 </html>
 """
@@ -365,8 +407,8 @@ def handle_command(user_input):
     elif cmd == "/persona":
         try:
             with open(PERSONA_FILE, "r") as f:
-                persona_text = f.read().strip().replace('\n', ' ').replace('{AI_NAME}', config.AI_NAME)
-            return "Current persona: " + persona_text
+                persona_text = f.read().strip().replace('\n', ' ')
+            return "Current persona: " + persona_text.replace("{AI_NAME}", config.AI_NAME)
         except Exception as e:
             return f"Unable to read persona file: {e}"
     # Email (stubbed)
@@ -625,6 +667,10 @@ def landing():
 def favicon():
     return send_file(os.path.expanduser('~/favicon.png'), mimetype='image/png')
 
+from persona_module import persona_bp
+app.register_blueprint(persona_bp)
+from wellness_module import wellness_bp
+app.register_blueprint(wellness_bp)
 if __name__ == "__main__":
     print("Jeeves web interface starting on http://0.0.0.0:5000")
     app.run(host="0.0.0.0", port=5000, debug=False)
