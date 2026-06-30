@@ -70,7 +70,7 @@ def reload_saved():
             subprocess.run(["nohup", "python3", os.path.expanduser("~/jeeves_telegram.py"), ">", "/dev/null", "2>&1", "&"])
             return jsonify({"reply": "Your saved persona has been restored, sir."})
         else:
-            return jsonify({"reply": "No saved default found. Use Factory Reset to return to the original Jeeves."})
+            return jsonify({"reply": "No saved default found. Use Factory Reset to return to the original " + config.AI_NAME + "."})
     except Exception as e:
         return jsonify({"reply": f"Error reloading saved: {e}"})
 

@@ -22,6 +22,8 @@ WEB_SEARCH_PROVIDER = os.getenv("WEB_SEARCH_PROVIDER", "")
 BRAVE_SEARCH_API_KEY = os.getenv("BRAVE_SEARCH_API_KEY")
 
 
+AI_NAME = os.getenv("AI_NAME", "Jeeves")
+
 # LLM
 LLM_URL = os.getenv("LLM_URL", "http://localhost:8080/v1/chat/completions")
 LLM_MODEL = os.getenv("LLM_MODEL", "llama")

@@ -359,7 +359,7 @@ def ask_jeeves(question):
         return resp.json()["choices"][0]["message"]["content"]
     return "I am momentarily indisposed, sir."
 
-print("Jeeves at your service. Type /help for commands, or just speak.")
+print(f"{config.AI_NAME} at your service. Type /help for commands, or just speak.")
 while True:
     try:
         user = input("\nYou > ")
@@ -372,7 +372,7 @@ while True:
         continue
     cmd_response = handle_command(user)
     if cmd_response:
-        print(f"Jeeves > {cmd_response}")
+        print(f"{config.AI_NAME} > {cmd_response}")
         continue
     reply = ask_jeeves(user)
-    print(f"Jeeves > {reply}")
+    print(f"{config.AI_NAME} > {reply}")

@@ -67,7 +67,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             <div class="message jeeves">Good day, sir.</div>
         </div>
         <div class="chat-input">
-            <input type="text" id="userInput" placeholder="Speak to Jeeves..." onkeypress="if(event.key==='Enter') sendMessage()">
+            <input type="text" id="userInput" placeholder="Speak to {AI_NAME}..." onkeypress="if(event.key==='Enter') sendMessage()">
             <button onclick="sendMessage()">Send</button>
         </div>
     </div>
@@ -274,28 +274,65 @@ def index():
 def chat():
     data = request.get_json()
     user_msg = data.get('message', '')
+    # Conversation memory management commands
+    if user_msg.strip().lower() == "/forget":
+        lake_utils.clear_conversation_memory()
+        return jsonify({'reply': "Conversation memory cleared, sir. A fresh start."})
+    if user_msg.strip().lower() == "/memory-save":
+        msg = lake_utils.save_conversation_baseline()
+        return jsonify({'reply': msg})
+    if user_msg.strip().lower() == "/memory-restore":
+        msg = lake_utils.restore_conversation_baseline()
+        return jsonify({'reply': msg})
+    if user_msg.strip().lower() == "/memory-status":
+        msg = lake_utils.memory_status()
+        return jsonify({'reply': msg})
     if user_msg.startswith('/'):
         reply = handle_command(user_msg)
     else:
-        # 1. Try to enrich with lake context (ignore if distance > 0.5)
+        # --- Retrieve past conversation context ---
+        memory_context = ""
+        try:
+            past = lake_utils.retrieve_conversation_context(user_msg, n=3)
+            if past:
+                memory_context = "Previous conversation highlights:\n" + "\n".join(past)
+        except:
+            pass
+
+        # --- Lake and web search as before ---
         lake_context = ""
         try:
-            snippets, best_dist = lake_utils.query_lake(user_msg, n=3)
-            if snippets and best_dist < 0.5:
+            snippets = lake_utils.query_lake(user_msg, n=3)
+            if snippets:
                 lake_context = "🌊 Private knowledge lake results:\n" + "\n".join(snippets)
         except:
             pass
-        # 2. If lake empty and web search enabled, fetch web snippets
         if not lake_context and config.WEB_SEARCH_ENABLED:
             web_results = web_search.search(user_msg, max_results=3, daily_limit=50)
             if web_results:
                 lake_context = "📡 Web results (nothing in your private lake):\n"
                 for r in web_results:
                     lake_context += f"- {r['title']}: {r['snippet']}\n"
-        # 3. Build final prompt
+
+        # --- Combine all context ---
+        all_context = ""
+        if memory_context:
+            all_context += memory_context + "\n\n"
         if lake_context:
-            user_msg = f"Using the following information, answer the user's question. If the information is not relevant, say so.\n\nInformation:\n{lake_context}\n\nUser question: {user_msg}"
+            all_context += lake_context + "\n\n"
+        if all_context:
+            user_msg = f"Using the following information, answer the user's question. If the information is not relevant, say so.\n\n{all_context}User question: {user_msg}"
         reply = ask_llm(user_msg)
+
+        # --- Summarise this exchange and store it ---
+        try:
+            summary_prompt = f"Summarise the following exchange in one concise sentence, capturing the key topic.\nUser: {user_msg}\nAssistant: {reply}"
+            summary = ask_llm(summary_prompt)
+            if summary and len(summary) > 10:
+                lake_utils.store_conversation_summary(summary)
+        except:
+            pass
+
     return jsonify({'reply': reply})
 
 @app.route('/command', methods=['POST'])
@@ -490,7 +527,7 @@ def handle_command(user_input):
 
 def ask_llm(question):
     try:
-        persona = open(PERSONA_FILE).read().strip()
+        persona = open(PERSONA_FILE).read().strip().replace('{AI_NAME}', config.AI_NAME)
         resp = requests.post(LLM_URL, json={
             "model": "llama",
             "messages": [
@@ -621,5 +658,5 @@ def favicon():
 from trading_blueprint import trading_bp
 app.register_blueprint(trading_bp)
 if __name__ == "__main__":
-    print("Jeeves web interface starting on http://0.0.0.0:5000")
+    print(f"{config.AI_NAME} web interface starting on http://0.0.0.0:5000")
     app.run(host="0.0.0.0", port=5000, debug=False)
