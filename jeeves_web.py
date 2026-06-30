@@ -1,6 +1,6 @@
 import os, datetime, re, json, subprocess, requests
 from flask import Flask, render_template_string, request, jsonify, send_file
-import crypto_sim, trading_advisor, config, lake_utils, web_search
+import crypto_sim, trading_advisor, config
 import chromadb
 from chromadb.utils import embedding_functions
 
@@ -38,17 +38,17 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #1a1a1a; color: #d4d4d4; height: 100vh; display: flex; flex-direction: column; }
-        .top-bar { height: 25%; display: flex; flex-direction: column; border-bottom: 1px solid #444; background: #1e1e1e; }
+        .top-bar { height: 50%; display: flex; flex-direction: column; border-bottom: 1px solid #444; background: #1e1e1e; }
         .top-bar .chat-messages { flex: 1; overflow-y: auto; padding: 0.6rem; font-size: 0.9rem; }
         .top-bar .chat-input { display: flex; padding: 0.4rem; background: #2c2c2c; }
         .top-bar .chat-input input { flex: 1; padding: 0.4rem; background: #3c3c3c; border: 1px solid #555; color: #fff; border-radius: 4px; font-size: 0.85rem; }
         .top-bar .chat-input button { padding: 0.4rem 0.8rem; margin-left: 0.4rem; background: #c0a878; border: none; border-radius: 4px; cursor: pointer; color: #1a1a1a; font-weight: bold; font-size: 0.85rem; }
-        .middle-area { height: 50%; display: flex; flex-direction: column; border-bottom: 1px solid #444; }
+        .middle-area { height: 40%; display: flex; flex-direction: column; border-bottom: 1px solid #444; }
         .middle-area .tab-buttons { display: flex; flex-wrap: wrap; gap: 0.2rem; padding: 0.3rem 0.6rem; background: #2c2c2c; }
         .middle-area .tab { background: #3c3c3c; border: 1px solid #555; color: #d4d4d4; padding: 0.3rem 0.5rem; border-radius: 3px; cursor: pointer; font-size: 0.8rem; }
         .middle-area .tab.active { background: #c0a878; color: #1a1a1a; border-color: #c0a878; }
         .middle-area .tab-content { flex: 1; overflow-y: auto; padding: 0.6rem; }
-        .bottom-bar { height: 25%; display: flex; flex-direction: column; background: #1e1e1e; padding: 0.6rem; gap: 0.4rem; }
+        .bottom-bar { height: 10%; display: flex; flex-direction: column; background: #1e1e1e; padding: 0.6rem; gap: 0.4rem; }
         .bottom-bar .btn-row { display: flex; flex-wrap: wrap; gap: 0.3rem; }
         .bottom-bar .btn { background: #3c3c3c; border: 1px solid #555; color: #d4d4d4; padding: 0.3rem 0.6rem; border-radius: 3px; cursor: pointer; font-size: 0.8rem; white-space: nowrap; }
         .bottom-bar .btn:hover { background: #4c4c4c; }
@@ -67,7 +67,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             <div class="message jeeves">Good day, sir.</div>
         </div>
         <div class="chat-input">
-            <input type="text" id="userInput" placeholder="Speak to your valet..." onkeypress="if(event.key==='Enter') sendMessage()">
+            <input type="text" id="userInput" placeholder="Speak to Jeeves..." onkeypress="if(event.key==='Enter') sendMessage()">
             <button onclick="sendMessage()">Send</button>
         </div>
     </div>
@@ -75,12 +75,13 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     <!-- Middle 50%: Active Skill Panel -->
     <div class="middle-area">
         <div class="tab-buttons">
-            <button class="tab active" data-tab="mirror" onclick="showTab('mirror')">🪞 Mirror</button>
+            <button class="tab active" data-tab="mirror" onclick="showTab('persona')">🪞 Mirror</button>
             <button class="tab" data-tab="cryptostrat" onclick="showTab('cryptostrat')">📈 Trading Strat</button>
             <button class="tab" data-tab="account" onclick="showTab('account')">💼 Account</button>
             <button class="tab" data-tab="email" onclick="showTab('email')">📧 Inbox</button>
             <button class="tab" data-tab="lake" onclick="showTab('lake')">🌊 Lake</button>
-        </div>
+        
+            <button class="tab" data-tab="persona" onclick="showTab('persona')">👤 Persona</button></div>
         <div class="tab-content">
             <div id="tab-mirror" class="panel" style="display: block;">
                 <div id="mirrorPersonaPanel" style="max-height: 100%; overflow-y: auto;">Loading persona...</div>
@@ -92,7 +93,16 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                     <button class="btn" onclick="factoryReset()">⚠️ Reset</button>
                 </div>
             </div>
-            <div id="tab-cryptostrat" class="panel" style="display: none;">
+            
+            <!-- Persona Module -->
+            <div id="tab-persona" class="panel" style="display: none;">
+                <div style="font-size:1.1rem;color:#c0a878;margin-bottom:0.5rem;">Current Persona</div>
+                <div id="personaSummary" style="background:#1e1e1e;padding:0.6rem;border-radius:4px;min-height:3rem;max-height:60%;overflow-y:auto;white-space:pre-wrap;">Loading...</div>
+                <div style="margin-top:0.8rem;display:flex;gap:0.4rem;">
+                    <input type="text" id="personaFeedbackInput" placeholder="Add feedback for the Mirror..." style="flex:1;padding:0.4rem;background:#2c2c2c;border:1px solid #555;color:#fff;border-radius:4px;font-size:0.85rem;" onkeypress="if(event.key==='Enter') submitFeedback()">
+                    <button class="btn" onclick="submitFeedback()" style="flex-shrink:0;">✨ Refine</button>
+                </div>
+            </div><div id="tab-cryptostrat" class="panel" style="display: none;">
                 <div id="cryptoVaultDisplay" style="margin-bottom: 0.4rem;">Loading vault...</div>
                 <div id="cryptoStratSummary" style="max-height: 100%; overflow-y: auto;">Loading strategy...</div>
                 <div id="cryptoStratFeedback" style="max-height: 120px; overflow-y: auto;">No feedback.</div>
@@ -111,16 +121,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
     <!-- Bottom 25%: Command Palette -->
     <div class="bottom-bar">
-        <div class="btn-row">
-            <button class="btn" onclick="sendCommand('/trade account')">💼 Portfolio</button>
-            <button class="btn" onclick="sendCommand('/trade positions')">📊 Positions</button>
-            <button class="btn" onclick="sendCommand('/email check')">📧 Inbox</button>
-            <button class="btn" onclick="sendCommand('/crypto-sim account')">🪙 Crypto-Sim</button>
-            <button class="btn" onclick="sendCommand('/lake good service')">🌊 Lake Search</button>
-            <button class="btn" onclick="sendCommand('/persona')">👤 Persona</button>
-        </div>
+        <div class="btn-row"></div>
         <div class="status-panel">
-            <div id="vaultStatus" class="status">Vault: --</div>
+            
             <div id="cmdOutput" class="status" style="flex:1; overflow-y:auto;"></div>
         </div>
     </div>
@@ -169,10 +172,12 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             if (tabName === 'mirror') loadMirrorPanel();
             if (tabName === 'lake') loadLake();
             if (tabName === 'cryptostrat') loadCryptoStrat();
+            if (tabName === 'persona') { loadPersonaModule(); updateBottomBar('persona'); }
+            else { updateBottomBar(tabName); }
         }
 
         async function loadEmail() { document.getElementById('tab-email').textContent = await fetchCommand('/email check'); }
-        async function loadAccount() {            const resp = await fetch('/account_summary');            const text = await resp.text();            document.getElementById('tab-account').textContent = text;        }
+        async function loadAccount() { document.getElementById('tab-account').textContent = await fetchCommand('/trade account'); }
         async function loadLake() { document.getElementById('tab-lake').textContent = await fetchCommand('/lake good service'); }
 
         // === Mirror ===
@@ -216,7 +221,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             document.getElementById('cryptoStratFeedback').textContent = await fetchCommand('/crypto-strat_read') || 'No feedback.';
             const vault = await fetchCommand('/crypto-vault');
             document.getElementById('cryptoVaultDisplay').textContent = vault || 'Vault: --';
-            document.getElementById('vaultStatus').textContent = vault || 'Vault: --';
+            
         }
         async function refineCryptoStrat() {
             document.getElementById('cryptoStratSummary').textContent = 'Refining...';
@@ -245,7 +250,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         }
 
         window.onload = function() {
-            showTab('mirror');
+            showTab('persona');
             loadCryptoStrat();
             // Auto-refresh the active tab every 60 seconds
             setInterval(function() {
@@ -260,8 +265,50 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 }
             }, 10000);
         };
-    </script>
-<script src="/static/trading.js"></script>
+    
+        // --- Persona Module functions ---
+        async function loadPersonaModule() {
+            document.getElementById('personaSummary').textContent = await fetchCommand('/persona') || 'No persona.';
+        }
+        async function submitFeedback() {
+            const input = document.getElementById('personaFeedbackInput');
+            const text = input.value.trim();
+            if (!text) return;
+            input.value = '';
+            await fetchCommand('/mirror ' + text);
+            const resp = await fetch('/refine_persona', { method: 'POST' });
+            const data = await resp.json();
+            document.getElementById('personaSummary').textContent = data.reply;
+            setTimeout(loadPersonaModule, 2000);
+        }
+        // --- Memory controls ---
+        async function saveMemory() {
+            const resp = await fetch('/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: '/memory-save' }) });
+            const data = await resp.json();
+            alert(data.reply);
+        }
+        async function restoreMemory() {
+            const resp = await fetch('/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: '/memory-restore' }) });
+            const data = await resp.json();
+            alert(data.reply);
+            loadPersonaModule();
+        }
+        // --- Bottom bar update ---
+        function updateBottomBar(tab) {
+            const bar = document.querySelector('.bottom-bar .btn-row');
+            if (!bar) return;
+            if (tab === 'persona') {
+                bar.innerHTML = `
+                    <button class="btn" onclick="saveMemory()">🧠 Save Memory</button>
+                    <button class="btn" onclick="reloadSaved()">📂 Restore Persona</button>
+                    <button class="btn" onclick="factoryReset()">⚠️ Reset Persona</button>
+                    <button class="btn" onclick="loadPersonaModule()">↻ Refresh</button>
+                `;
+            } else {
+                bar.innerHTML = '';
+            }
+        }
+</script>
 </body>
 </html>
 """
@@ -274,69 +321,10 @@ def index():
 def chat():
     data = request.get_json()
     user_msg = data.get('message', '')
-    # Conversation memory management commands
-    if user_msg.strip().lower() == "/forget":
-        lake_utils.clear_conversation_memory()
-        return jsonify({'reply': "Conversation memory cleared, sir. A fresh start."})
-    if user_msg.strip().lower() == "/memory-save":
-        msg = lake_utils.save_conversation_baseline()
-        return jsonify({'reply': msg})
-    if user_msg.strip().lower() == "/memory-restore":
-        msg = lake_utils.restore_conversation_baseline()
-        return jsonify({'reply': msg})
-    if user_msg.strip().lower() == "/memory-status":
-        msg = lake_utils.memory_status()
-        return jsonify({'reply': msg})
     if user_msg.startswith('/'):
         reply = handle_command(user_msg)
     else:
-        # --- Retrieve past conversation context ---
-        memory_context = ""
-        try:
-            past = lake_utils.retrieve_conversation_context(user_msg, n=3)
-            if past:
-                memory_context = "Previous conversation highlights:\n" + "\n".join(past)
-        except:
-            pass
-
-        # --- Lake and web search as before ---
-        lake_context = ""
-        try:
-            snippets, best_score = lake_utils.query_lake(user_msg, n=3)
-            if snippets and best_score < 0.6:
-                lake_context = "🌊 Private knowledge lake results:\n" + "\n".join(snippets)
-        except:
-            pass
-        if not lake_context and config.WEB_SEARCH_ENABLED:
-            web_results = web_search.search(user_msg, max_results=3, daily_limit=50)
-            if web_results:
-                lake_context = "📡 Web results (nothing in your private lake):\n"
-                for r in web_results:
-                    lake_context += f"- {r['title']}: {r['snippet']}\n"
-
-        # --- Combine all context ---
-        all_context = ""
-        if memory_context:
-            all_context += memory_context + "\n\n"
-        if lake_context:
-            all_context += lake_context + "\n\n"
-        if all_context:
-            user_msg = f"Using the following information, answer the user's question. If the information is not relevant, say so.\n\n{all_context}User question: {user_msg}"
-    with open(os.path.expanduser("~/chat_prompt.log"), "a") as pf:
-        pf.write(f"{datetime.datetime.now().isoformat()} PROMPT: {user_msg}\
-\
-")
         reply = ask_llm(user_msg)
-
-        # --- Summarise this exchange and store it ---
-        try:
-            summary_prompt = f"Summarise the following exchange in one concise sentence, capturing the key topic.\nUser: {user_msg}\nAssistant: {reply}"
-            summary = ask_llm(summary_prompt)
-            if summary and len(summary) > 10:
-                lake_utils.store_conversation_summary(summary)
-        except:
-            pass
-
     return jsonify({'reply': reply})
 
 @app.route('/command', methods=['POST'])
@@ -377,7 +365,7 @@ def handle_command(user_input):
     elif cmd == "/persona":
         try:
             with open(PERSONA_FILE, "r") as f:
-                persona_text = f.read().strip().replace('\n', ' ')
+                persona_text = f.read().strip().replace('\n', ' ').replace('{AI_NAME}', config.AI_NAME)
             return "Current persona: " + persona_text
         except Exception as e:
             return f"Unable to read persona file: {e}"
@@ -531,7 +519,7 @@ def handle_command(user_input):
 
 def ask_llm(question):
     try:
-        persona = open(PERSONA_FILE).read().strip().replace('{AI_NAME}', config.AI_NAME)
+        persona = open(PERSONA_FILE).read().strip()
         resp = requests.post(LLM_URL, json={
             "model": "llama",
             "messages": [
@@ -629,28 +617,6 @@ def trading_reset():
     msg = mirror_engine.factory_reset(factory, active, saved)
     return jsonify({"reply": msg})
 
-@app.route("/account_summary")
-def account_summary():
-    import trading_advisor
-    account = trading_advisor.get_account()
-    positions = trading_advisor.get_positions()
-    if not account:
-        return "Alpaca account not accessible."
-    lines = []
-    lines.append(f"Portfolio Value: ${float(account.get('portfolio_value', 0)):,.2f}")
-    lines.append(f"Cash: ${float(account.get('cash', 0)):,.2f}")
-    if positions:
-        lines.append("\nHoldings:")
-        for p in positions:
-            symbol = p.get('symbol', "?")
-            qty = p.get('qty', "0")
-            mkt_val = float(p.get('market_value', 0))
-            unreal_pl = float(p.get('unrealized_pl', 0))
-            lines.append(f"  {symbol}: {qty} shares | Value ${mkt_val:,.2f} | Unrealized P/L ${unreal_pl:+,.2f}")
-    else:
-        lines.append("\nNo current positions.")
-    return "\n".join(lines)
-
 @app.route('/landing')
 def landing():
     return send_file(os.path.expanduser('~/landing.html'))
@@ -659,8 +625,6 @@ def landing():
 def favicon():
     return send_file(os.path.expanduser('~/favicon.png'), mimetype='image/png')
 
-from trading_blueprint import trading_bp
-app.register_blueprint(trading_bp)
 if __name__ == "__main__":
-    print(f"{config.AI_NAME} web interface starting on http://0.0.0.0:5000")
+    print("Jeeves web interface starting on http://0.0.0.0:5000")
     app.run(host="0.0.0.0", port=5000, debug=False)

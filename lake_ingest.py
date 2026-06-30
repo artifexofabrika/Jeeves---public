@@ -1,3 +1,10 @@
+import os as _os
+from dotenv import load_dotenv
+load_dotenv(_os.path.expanduser('~/Beeker-mk1/.env'))
+if _os.getenv('HF_TOKEN'):
+    _os.environ['HF_TOKEN'] = _os.getenv('HF_TOKEN')
+from dotenv import load_dotenv
+load_dotenv()
 #!/usr/bin/env python3
 """
 Jeeves Knowledge Lake Ingest

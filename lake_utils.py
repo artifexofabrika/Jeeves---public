@@ -1,5 +1,13 @@
-import re, chromadb
+import os, re, chromadb
+from pathlib import Path
+from dotenv import load_dotenv
 from chromadb.utils import embedding_functions
+
+# Load environment once
+load_dotenv(Path(__file__).resolve().parent / '.env')
+load_dotenv(os.path.expanduser('~/.env'))
+
+HF_TOKEN = os.getenv("HF_TOKEN")
 
 STOPWORDS = {
     "a", "an", "the", "and", "or", "but", "in", "on", "at", "to", "for",
@@ -11,6 +19,13 @@ STOPWORDS = {
     "how", "when", "where", "why", "not", "no", "just", "very", "too"
 }
 
+def _make_ef():
+    """Create an embedding function, passing the HF token if available."""
+    kwargs = {"model_name": "all-MiniLM-L6-v2"}
+    if HF_TOKEN:
+        kwargs["hf_api_key"] = HF_TOKEN
+    return embedding_functions.SentenceTransformerEmbeddingFunction(**kwargs)
+
 def _keyword_overlap(query, document):
     query_words = {w.lower() for w in re.findall(r'[a-zA-Z0-9]+', query) if w.lower() not in STOPWORDS}
     if not query_words:
@@ -20,7 +35,6 @@ def _keyword_overlap(query, document):
     return found / len(query_words)
 
 def _exact_term_search(term, collection, n=5):
-    """Search the entire collection for documents containing the exact term (case‑insensitive)."""
     try:
         all_data = collection.get()
         docs = all_data.get('documents', [])
@@ -36,7 +50,7 @@ def _exact_term_search(term, collection, n=5):
         return []
 
 def query_lake(query, n=3, semantic_weight=0.5, threshold=0.6):
-    ef = embedding_functions.SentenceTransformerEmbeddingFunction(model_name="all-MiniLM-L6-v2")
+    ef = _make_ef()
     client = chromadb.PersistentClient(path="/mnt/lake/index")
     collection = client.get_or_create_collection(name="memory_lake", embedding_function=ef)
 
@@ -44,7 +58,6 @@ def query_lake(query, n=3, semantic_weight=0.5, threshold=0.6):
     docs = results.get('documents', [[]])[0]
     distances = results.get('distances', [[1.0]])[0]
 
-    # Always collect exact‑term matches for non‑stopwords
     terms = [w.lower() for w in re.findall(r'[a-zA-Z]+', query) if w.lower() not in STOPWORDS]
     exact_docs = set()
     for t in terms:
@@ -55,13 +68,11 @@ def query_lake(query, n=3, semantic_weight=0.5, threshold=0.6):
         return [], 1.0
 
     scored = []
-    # Score semantic results
     for doc, dist in zip(docs, distances):
         kw = _keyword_overlap(query, doc)
         combined = semantic_weight * dist + (1.0 - semantic_weight) * (1.0 - kw)
         scored.append((combined, doc))
 
-    # Add exact‑term matches with a good score
     for doc in exact_docs:
         kw = _keyword_overlap(query, doc)
         combined = semantic_weight * 0.8 + (1.0 - semantic_weight) * (1.0 - kw)
@@ -72,7 +83,6 @@ def query_lake(query, n=3, semantic_weight=0.5, threshold=0.6):
 
     filtered = [doc for score, doc in scored if score < threshold]
     if not filtered and exact_docs:
-        # still return exact matches even if they don't beat threshold
         filtered = list(exact_docs)[:n]
         best_score = threshold - 0.1
     return filtered[:n], best_score if filtered else 1.0
@@ -85,7 +95,7 @@ MEMORY_COLLECTION = "conversation_memory"
 BASELINE_COLLECTION = "conversation_memory_baseline"
 
 def _memory_collection():
-    ef = embedding_functions.SentenceTransformerEmbeddingFunction(model_name="all-MiniLM-L6-v2")
+    ef = _make_ef()
     client = chromadb.PersistentClient(path="/mnt/lake/index")
     return client.get_or_create_collection(name=MEMORY_COLLECTION, embedding_function=ef)
 
@@ -113,7 +123,7 @@ def clear_conversation_memory():
         pass
 
 def save_conversation_baseline():
-    ef = embedding_functions.SentenceTransformerEmbeddingFunction(model_name="all-MiniLM-L6-v2")
+    ef = _make_ef()
     client = chromadb.PersistentClient(path="/mnt/lake/index")
     try:
         client.delete_collection(name=BASELINE_COLLECTION)
@@ -133,6 +143,7 @@ def save_conversation_baseline():
     return f"Conversation baseline saved ({mem.count()} entries)."
 
 def restore_conversation_baseline():
+    ef = _make_ef()
     client = chromadb.PersistentClient(path="/mnt/lake/index")
     try:
         baseline = client.get_collection(name=BASELINE_COLLECTION)
@@ -141,7 +152,7 @@ def restore_conversation_baseline():
     clear_conversation_memory()
     mem = client.get_or_create_collection(
         name=MEMORY_COLLECTION,
-        embedding_function=embedding_functions.SentenceTransformerEmbeddingFunction(model_name="all-MiniLM-L6-v2")
+        embedding_function=ef
     )
     all_docs = baseline.get()
     if all_docs['ids']:
