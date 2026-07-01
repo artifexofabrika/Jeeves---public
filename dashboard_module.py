@@ -41,6 +41,157 @@ def transcribe():
 # ------------------------------------------------------------
 # The complete dashboard HTML / CSS / JavaScript
 # ------------------------------------------------------------
+
+# --- Trading Module Routes (self‑contained) ---
+@dashboard_bp.route('/trading_summary')
+def trading_summary():
+    import config
+    try:
+        with open(config.TRADING_STRATEGY_FILE) as f:
+            return f.read().strip()
+    except:
+        return "No stock strategy file found."
+
+@dashboard_bp.route('/trading_feedback')
+def trading_feedback():
+    import mirror_engine, config, json
+    entries = mirror_engine.read_feedback(config.TRADING_MIRROR_LOG, n=3)
+    return json.dumps(entries)
+
+@dashboard_bp.route('/trading_refine', methods=['POST'])
+def trading_refine():
+    import mirror_engine, config
+    from flask import jsonify
+    llm = config.LLM_URL
+    active = mirror_engine.trading_active_path()
+    log = mirror_engine.trading_log_path()
+    instruction = "You are a trading strategy editor. Revise the current strategy based on user feedback."
+    proposed, error = mirror_engine.apply_feedback(log, active, llm, system_instruction=instruction, max_tokens=400, temperature=0.7)
+    if error:
+        return jsonify({"reply": f"Refinement failed: {error}"})
+    if not proposed or not proposed.strip():
+        return jsonify({"reply": "Refinement failed: empty response."})
+    mirror_engine.confirm_apply(proposed, active, log)
+    return jsonify({"reply": proposed})
+
+@dashboard_bp.route('/trading_save', methods=['POST'])
+def trading_save():
+    import mirror_engine
+    from flask import jsonify
+    active = mirror_engine.trading_active_path()
+    saved = mirror_engine.trading_saved_path()
+    msg = mirror_engine.save_baseline(active, saved)
+    return jsonify({"reply": msg})
+
+@dashboard_bp.route('/trading_reload', methods=['POST'])
+def trading_reload():
+    import mirror_engine
+    from flask import jsonify
+    active = mirror_engine.trading_active_path()
+    saved = mirror_engine.trading_saved_path()
+    msg = mirror_engine.reload_baseline(saved, active)
+    return jsonify({"reply": msg})
+
+@dashboard_bp.route('/trading_reset', methods=['POST'])
+def trading_reset():
+    import mirror_engine
+    from flask import jsonify
+    active = mirror_engine.trading_active_path()
+    saved = mirror_engine.trading_saved_path()
+    factory = mirror_engine.trading_factory_path()
+    msg = mirror_engine.factory_reset(factory, active, saved)
+    return jsonify({"reply": msg})
+
+# --- Crypto Strategy Routes ---
+@dashboard_bp.route('/crypto_summary')
+def crypto_summary():
+    import config
+    try:
+        with open(config.CRYPTO_STRATEGY_FILE) as f:
+            return f.read().strip()
+    except:
+        return "No crypto strategy file found."
+
+@dashboard_bp.route('/crypto_feedback')
+def crypto_feedback():
+    import mirror_engine, config, json
+    entries = mirror_engine.read_feedback(config.CRYPTO_MIRROR_LOG, n=3)
+    return json.dumps(entries)
+
+@dashboard_bp.route('/crypto_refine', methods=['POST'])
+def crypto_refine():
+    import mirror_engine, config
+    from flask import jsonify
+    llm = config.LLM_URL
+    active = mirror_engine.crypto_active_path()
+    log = mirror_engine.crypto_log_path()
+    instruction = "You are a crypto trading strategy editor. Revise the current strategy based on user feedback."
+    proposed, error = mirror_engine.apply_feedback(log, active, llm, system_instruction=instruction, max_tokens=400, temperature=0.7)
+    if error:
+        return jsonify({"reply": f"Refinement failed: {error}"})
+    if not proposed or not proposed.strip():
+        return jsonify({"reply": "Refinement failed: empty response."})
+    mirror_engine.confirm_apply(proposed, active, log)
+    return jsonify({"reply": proposed})
+
+@dashboard_bp.route('/crypto_save', methods=['POST'])
+def crypto_save():
+    import mirror_engine
+    from flask import jsonify
+    active = mirror_engine.crypto_active_path()
+    saved = mirror_engine.crypto_saved_path()
+    msg = mirror_engine.save_baseline(active, saved)
+    return jsonify({"reply": msg})
+
+@dashboard_bp.route('/crypto_reload', methods=['POST'])
+def crypto_reload():
+    import mirror_engine
+    from flask import jsonify
+    active = mirror_engine.crypto_active_path()
+    saved = mirror_engine.crypto_saved_path()
+    msg = mirror_engine.reload_baseline(saved, active)
+    return jsonify({"reply": msg})
+
+@dashboard_bp.route('/crypto_reset', methods=['POST'])
+def crypto_reset():
+    import mirror_engine
+    from flask import jsonify
+    active = mirror_engine.crypto_active_path()
+    saved = mirror_engine.crypto_saved_path()
+    factory = mirror_engine.crypto_factory_path()
+    msg = mirror_engine.factory_reset(factory, active, saved)
+    return jsonify({"reply": msg})
+
+# --- Account Summary ---
+@dashboard_bp.route('/account_summary')
+def account_summary():
+    import trading_advisor
+    account = trading_advisor.get_account()
+    positions = trading_advisor.get_positions()
+    if not account:
+        return "Alpaca account not accessible."
+    lines = []
+    lines.append(f"Portfolio Value: ${float(account.get('portfolio_value', 0)):,.2f}")
+    lines.append(f"Cash: ${float(account.get('cash', 0)):,.2f}")
+    if positions:
+        lines.append("\nHoldings:")
+        for p in positions:
+            symbol = p.get("symbol", "?")
+            qty = p.get("qty", "0")
+            mkt_val = float(p.get("market_value", 0))
+            unreal_pl = float(p.get("unrealized_pl", 0))
+            lines.append(f"  {symbol}: {qty} shares | Value ${mkt_val:,.2f} | Unrealized P/L ${unreal_pl:+,.2f}")
+    else:
+        lines.append("\nNo current positions.")
+    return "\n".join(lines)
+
+
+
+@dashboard_bp.route('/crypto_account_summary')
+def crypto_account_summary():
+    import crypto_sim
+    return crypto_sim.get_account()
+
 DASHBOARD_HTML = """<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -115,18 +266,35 @@ DASHBOARD_HTML = """<!DOCTYPE html>
                 </div>
                 <div id="lakeSearchResults" style="background:#1e1e1e;padding:0.6rem;border-radius:4px;min-height:3rem;">Results will appear here.</div>
             </div>
-            <div id="tab-trading" class="panel" style="display:none;">
-                <div style="margin-bottom:1rem;">
-                    <div style="font-size:1.1rem;color:#c0a878;">Stock Strategy</div>
-                    <div id="stockStrategySummary" style="background:#1e1e1e;padding:0.6rem;border-radius:4px;">Loading...</div>
+            <div id="tab-trading" class="panel" style="display:none;padding:0.4rem;white-space:normal;margin-bottom:0;">
+                <!-- Sub-tab buttons -->
+                <div style="display:flex;gap:0.3rem;margin-bottom:0;">
+                    <button class="tab active" data-subtab="stocks" onclick="showSubTab('stocks')">📈 Stocks</button>
+                    <button class="tab" data-subtab="crypto" onclick="showSubTab('crypto')">🪙 Crypto</button>
                 </div>
-                <div style="margin-bottom:1rem;">
-                    <div style="font-size:1.1rem;color:#c0a878;">Crypto Strategy</div>
-                    <div id="cryptoStrategySummary" style="background:#1e1e1e;padding:0.6rem;border-radius:4px;">Loading...</div>
+                <!-- Stocks sub-panel -->
+                <div id="subtrading-stocks" style="display:block;">
+                    <div id="stockStrategySummary" style="background:#1e1e1e;padding:0.6rem;border-radius:4px;min-height:3rem;max-height:300px;overflow-y:auto;white-space:pre-wrap;">Loading...</div>
+                    <div style="margin-top:0.6rem;display:flex;gap:0.4rem;">
+                        <input type="text" id="stockFeedbackInput" placeholder="Add feedback for stock strategy..." style="flex:1;padding:0.4rem;background:#2c2c2c;border:1px solid #555;color:#fff;border-radius:4px;font-size:0.85rem;" onkeypress="if(event.key==='Enter') refineStocks()">
+                        <button class="btn" onclick="refineStocks()" style="flex-shrink:0;">✨ Refine</button>
+                    </div>
+                    <div style="margin-top:0.6rem; border:1px solid #444; border-radius:4px; padding:0.6rem;">
+                        <div style="font-size:1.0rem;color:#c0a878;margin-bottom:0.3rem;">Alpaca Paper Account</div>
+                        <div id="stockAccountSummary" style="background:#1e1e1e;padding:0.4rem;border-radius:4px;min-height:2rem;white-space:pre-wrap;">Loading...</div>
+                    </div>
                 </div>
-                <div style="margin-bottom:1rem;">
-                    <div style="font-size:1.1rem;color:#c0a878;">Account</div>
-                    <div id="accountSummary" style="background:#1e1e1e;padding:0.6rem;border-radius:4px;">Loading...</div>
+                <!-- Crypto sub-panel -->
+                <div id="subtrading-crypto" style="display:none;">
+                    <div id="cryptoStrategySummary" style="background:#1e1e1e;padding:0.6rem;border-radius:4px;min-height:3rem;max-height:300px;overflow-y:auto;white-space:pre-wrap;">Loading...</div>
+                    <div style="margin-top:0.6rem;display:flex;gap:0.4rem;">
+                        <input type="text" id="cryptoFeedbackInput" placeholder="Add feedback for crypto strategy..." style="flex:1;padding:0.4rem;background:#2c2c2c;border:1px solid #555;color:#fff;border-radius:4px;font-size:0.85rem;" onkeypress="if(event.key==='Enter') refineCrypto()">
+                        <button class="btn" onclick="refineCrypto()" style="flex-shrink:0;">✨ Refine</button>
+                    </div>
+                    <div style="margin-top:0.6rem; border:1px solid #444; border-radius:4px; padding:0.6rem;">
+                        <div style="font-size:1.0rem;color:#c0a878;margin-bottom:0.3rem;">CoinGecko Paper Account</div>
+                        <div id="cryptoAccountSummary" style="background:#1e1e1e;padding:0.4rem;border-radius:4px;min-height:2rem;white-space:pre-wrap;">Loading...</div>
+                    </div>
                 </div>
             </div>
             <div id="tab-email" class="panel" style="display:none;">
@@ -231,7 +399,7 @@ DASHBOARD_HTML = """<!DOCTYPE html>
                 persona: `<button onclick="saveMemory()">💾 Save Persona</button><button onclick="restoreMemory()">📂 Restore</button><button onclick="resetPersona()">⚠️ Reset</button><button onclick="loadPersonaModule()">↻ Refresh</button>`,
                 wellness: '',
                 datalake: `<button onclick="searchLake()">🔍 Search Lake</button>`,
-                trading: `<button onclick="sendCommand('/trade account')">💼 Portfolio</button><button onclick="sendCommand('/trade positions')">📊 Positions</button><button onclick="sendCommand('/crypto-sim account')">🪙 Crypto</button>`,
+                trading: `<button onclick="saveCurrentStrategy()">💾 Save</button><button onclick="reloadCurrentStrategy()">📂 Reload</button><button onclick="resetCurrentStrategy()">⚠️ Reset</button>`,
                 email: ''
             };
             bar.innerHTML = bars[tab] || '';
@@ -276,7 +444,6 @@ DASHBOARD_HTML = """<!DOCTYPE html>
         async function loadTradingModule() {
             document.getElementById('stockStrategySummary').textContent = await fetchCommand('/crypto-strat_summary') || 'No stock strategy.';
             document.getElementById('cryptoStrategySummary').textContent = await fetchCommand('/crypto-strat_summary') || 'No crypto strategy.';
-            document.getElementById('accountSummary').textContent = await fetchCommand('/trade account') || 'Account unavailable.';
         }
 
         // ==================== Lake ====================
@@ -298,6 +465,76 @@ DASHBOARD_HTML = """<!DOCTYPE html>
         }
 
         window.onload = function() { showTab('persona'); };
+    
+        // --- Sub-tab switching ---
+        let currentSubTab = 'stocks';
+        function showSubTab(name) {
+            currentSubTab = name;
+            document.getElementById('subtrading-stocks').style.display = (name === 'stocks') ? 'block' : 'none';
+            document.getElementById('subtrading-crypto').style.display = (name === 'crypto') ? 'block' : 'none';
+            document.querySelectorAll('.tab[data-subtab]').forEach(btn => {
+                btn.classList.remove('active');
+                if (btn.getAttribute('data-subtab') === name) btn.classList.add('active');
+            });
+        }
+        // --- Refine with feedback from input ---
+        async function refineStocks() {
+            const input = document.getElementById('stockFeedbackInput');
+            const text = input.value.trim();
+            if (!text) { alert('Please enter feedback for the stock strategy.'); return; }
+            input.value = '';
+            await fetchCommand('/trade-mirror ' + text);
+            document.getElementById('stockStrategySummary').textContent = 'Refining...';
+            const resp = await fetch('/trading_refine', { method:'POST' });
+            const data = await resp.json();
+            document.getElementById('stockStrategySummary').textContent = data.reply;
+        }
+        async function refineCrypto() {
+            const input = document.getElementById('cryptoFeedbackInput');
+            const text = input.value.trim();
+            if (!text) { alert('Please enter feedback for the crypto strategy.'); return; }
+            input.value = '';
+            await fetchCommand('/crypto-strat ' + text);
+            document.getElementById('cryptoStrategySummary').textContent = 'Refining...';
+            const resp = await fetch('/crypto_refine', { method:'POST' });
+            const data = await resp.json();
+            document.getElementById('cryptoStrategySummary').textContent = data.reply;
+        }
+        // --- Bottom bar helpers (act on current sub-tab) ---
+        async function saveCurrentStrategy() {
+            const resp = await fetch(currentSubTab === 'stocks' ? '/trading_save' : '/crypto_save', { method:'POST' });
+            const data = await resp.json();
+            alert(data.reply);
+        }
+        async function reloadCurrentStrategy() {
+            const resp = await fetch(currentSubTab === 'stocks' ? '/trading_reload' : '/crypto_reload', { method:'POST' });
+            const data = await resp.json();
+            if (currentSubTab === 'stocks') document.getElementById('stockStrategySummary').textContent = data.reply;
+            else document.getElementById('cryptoStrategySummary').textContent = data.reply;
+        }
+        async function resetCurrentStrategy() {
+            const type = currentSubTab === 'stocks' ? 'stock' : 'crypto';
+            if (!confirm(`Restore factory ${type} strategy?`)) return;
+            const resp = await fetch(currentSubTab === 'stocks' ? '/trading_reset' : '/crypto_reset', { method:'POST' });
+            const data = await resp.json();
+            if (currentSubTab === 'stocks') document.getElementById('stockStrategySummary').textContent = data.reply;
+            else document.getElementById('cryptoStrategySummary').textContent = data.reply;
+        }
+        // --- Load module content ---
+        async function loadTradingModule() {
+            // Stock strategy
+            const stockResp = await fetch('/trading_summary');
+            document.getElementById('stockStrategySummary').textContent = await stockResp.text() || 'No stock strategy.';
+            // Crypto strategy
+            const cryptoResp = await fetch('/crypto_summary');
+            document.getElementById('cryptoStrategySummary').textContent = await cryptoResp.text() || 'No crypto strategy.';
+            // Stock account (Alpaca)
+            const stockAcc = await fetch('/account_summary');
+            document.getElementById('stockAccountSummary').textContent = await stockAcc.text() || 'Account unavailable.';
+            // Crypto account (CoinGecko)
+            const cryptoAcc = await fetch('/crypto_account_summary');
+            document.getElementById('cryptoAccountSummary').textContent = await cryptoAcc.text() || 'Account unavailable.';
+        }
     </script>
 </body>
 </html>"""
