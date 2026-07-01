@@ -388,6 +388,33 @@ def chat():
         except:
             pass
         # 2. Lake context
+        # --- Wellness: detect query vs logging intent ---
+        lower_msg = user_msg.lower()
+        wellness_triggers = {'eat', 'ate', 'food', 'meal', 'calories', 'diet', 'weight', 'metformin', 'medication', 'supplement', 'vitamin', 'breakfast', 'lunch', 'dinner', 'snack', 'nutrition', 'health', 'today', 'log'}
+        # Check if this is a retrieval question (contains question words or phrases)
+        retrieval_phrases = {'how many', 'how much', 'what did i eat', 'what did i have', 'did i eat', 'calories did i', 'summarize', 'summarise', 'summary', 'report'}
+        is_retrieval = any(phrase in lower_msg for phrase in retrieval_phrases)
+        if any(trigger in lower_msg for trigger in wellness_triggers):
+            try:
+                import chromadb
+                ef = chromadb.utils.embedding_functions.SentenceTransformerEmbeddingFunction(model_name="all-MiniLM-L6-v2")
+                client = chromadb.PersistentClient(path="/mnt/lake/index")
+                collection = client.get_or_create_collection(name="memory_lake", embedding_function=ef)
+                all_docs = collection.get()['documents']
+                wellness_entries = [d for d in all_docs if 'wellness_log.txt' in d[:200] or d.startswith('2026')]
+                if wellness_entries and is_retrieval:
+                    # Retrieval: inject logs into context
+                    lake_context = "📝 Your wellness log entries:\n" + "\n".join(wellness_entries[-10:])
+                elif not is_retrieval:
+                    # Logging: treat this as a new log entry
+                    import datetime
+                    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+                    full_entry = f"{timestamp}: {user_msg}"
+                    lake_utils.store_wellness_entry(full_entry)
+                    # Optionally, we can set a confirmation reply directly here, but we'll let the normal reply handle it.
+            except:
+                pass
+        # --- End wellness detection ---
         lake_context = ""
         try:
             snippets, best_score = lake_utils.query_lake(user_msg, n=1)
@@ -402,6 +429,33 @@ def chat():
                 lake_context = "📡 Web results (nothing in your private lake):\n"
                 for r in web_results:
                     lake_context += f"- {r['title']}: {r['snippet']}\n"
+        # --- Wellness query detection ---
+        lower_msg = user_msg.lower()
+        wellness_triggers = {'eat', 'ate', 'food', 'meal', 'calories', 'diet', 'weight', 'metformin', 'medication', 'supplement', 'vitamin', 'breakfast', 'lunch', 'dinner', 'snack', 'nutrition', 'health', 'today', 'log'}
+        # Check if this is a retrieval question (contains question words or phrases)
+        retrieval_phrases = {'how many', 'how much', 'what did i eat', 'what did i have', 'did i eat', 'calories did i', 'summarize', 'summarise', 'summary', 'report'}
+        is_retrieval = any(phrase in lower_msg for phrase in retrieval_phrases)
+        if any(trigger in lower_msg for trigger in wellness_triggers):
+            try:
+                import chromadb
+                ef = chromadb.utils.embedding_functions.SentenceTransformerEmbeddingFunction(model_name="all-MiniLM-L6-v2")
+                client = chromadb.PersistentClient(path="/mnt/lake/index")
+                collection = client.get_or_create_collection(name="memory_lake", embedding_function=ef)
+                all_docs = collection.get()['documents']
+                wellness_entries = [d for d in all_docs if 'wellness_log.txt' in d[:200] or d.startswith('2026')]
+                if wellness_entries and is_retrieval:
+                    # Retrieval: inject logs into context
+                    lake_context = "📝 Your wellness log entries:\n" + "\n".join(wellness_entries[-10:])
+                elif not is_retrieval:
+                    # Logging: treat this as a new log entry
+                    import datetime
+                    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+                    full_entry = f"{timestamp}: {user_msg}"
+                    lake_utils.store_wellness_entry(full_entry)
+            except:
+                pass
+        # --- End wellness detection ---
+
         # 4. Combine and ground
         all_context = ""
         if memory_context:
@@ -409,7 +463,14 @@ def chat():
         if lake_context:
             all_context += lake_context + "\n\n"
         if all_context:
-            user_msg = f"CRITICAL INSTRUCTION: You are a help desk agent. A user has asked a configuration question. Below is the official product manual. You must answer the question by quoting or paraphrasing the EXACT steps from the manual. Do not invent any file names, commands, or procedures. If the manual does not contain the answer, say \"I cannot find that information in the manual.\" Never, under any circumstances, refer to files or methods that are not explicitly listed below.\n\nOFFICIAL MANUAL:\n{all_context}\n\nQuestion: {user_msg}"
+            # Choose the grounding instruction based on what kind of context we have
+            if 'wellness log' in lake_context.lower():
+                instruction = "You are a nutrition assistant. A user has logged meals and wants approximate nutritional values. Using ONLY the wellness log entries below, estimate the calories, macronutrients, or other nutritional data the user asks about. State your assumptions clearly. Always add a disclaimer that you are not a medical professional and the user should consult a doctor for medical advice. If the log does not contain enough information, say so."
+            elif 'Configuration Guide' in lake_context or 'OFFICIAL MANUAL' in lake_context:
+                instruction = "CRITICAL INSTRUCTION: You are a help desk agent. A user has asked a configuration question. Below is the official product manual. You must answer the question by quoting or paraphrasing the EXACT steps from the manual. Do not invent any file names, commands, or procedures. If the manual does not contain the answer, say \"I cannot find that information in the manual.\" Never, under any circumstances, refer to files or methods that are not explicitly listed below."
+            else:
+                instruction = "Using ONLY the information provided below, answer the user's question. Do not use any outside knowledge. If the information does not contain the answer, say so plainly."
+            user_msg = f"{instruction}\n\n{all_context}\n\nUser question: {user_msg}"
         reply = ask_llm(user_msg)
         # 5. Summarise exchange and store
         try:

@@ -192,6 +192,21 @@ def crypto_account_summary():
     import crypto_sim
     return crypto_sim.get_account()
 
+
+@dashboard_bp.route('/log-wellness', methods=['POST'])
+def log_wellness():
+    import lake_utils
+    data = request.get_json()
+    message = data.get('message', '').strip()
+    if not message:
+        return jsonify({'status': 'error', 'reply': 'No message provided.'}), 400
+    # Prepend timestamp
+    import datetime
+    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+    full_entry = f"{timestamp}: {message}"
+    lake_utils.store_wellness_entry(full_entry)
+    return jsonify({'status': 'ok', 'reply': f"Logged: {message}"})
+
 DASHBOARD_HTML = """<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -253,10 +268,11 @@ DASHBOARD_HTML = """<!DOCTYPE html>
                 </div>
             </div>
             <div id="tab-wellness" class="panel" style="display:none;">
-                <div style="text-align:center;padding:2rem;color:#888;">
-                    <div style="font-size:2rem;">💚</div>
-                    <div>Wellness tracking is under development.</div>
+                <div style="display:flex;gap:0.4rem;align-items:center;">
+                    <input type="text" id="wellnessInput" placeholder="e.g., had 4 eggs and 2 tbsp coconut oil..." style="flex:1;padding:0.4rem;background:#2c2c2c;border:1px solid #555;color:#fff;border-radius:4px;font-size:0.85rem;" onkeypress="if(event.key==='Enter') logWellness()">
+                    <button class="btn" onclick="logWellness()" style="padding:0.4rem 0.8rem;background:#c0a878;border:none;border-radius:4px;color:#1a1a1a;font-weight:bold;">📝 Log</button>
                 </div>
+                <div id="wellnessStatus" style="margin-top:0.5rem;font-size:0.85rem;color:#888;"></div>
             </div>
             <div id="tab-datalake" class="panel" style="display:none;">
                 <div style="margin-bottom:1rem;">
@@ -534,6 +550,19 @@ DASHBOARD_HTML = """<!DOCTYPE html>
             // Crypto account (CoinGecko)
             const cryptoAcc = await fetch('/crypto_account_summary');
             document.getElementById('cryptoAccountSummary').textContent = await cryptoAcc.text() || 'Account unavailable.';
+        }
+    
+        async function logWellness() {
+            const input = document.getElementById('wellnessInput');
+            const text = input.value.trim();
+            if (!text) return;
+            input.value = '';
+            const status = document.getElementById('wellnessStatus');
+            status.textContent = 'Logging...';
+            const resp = await fetch('/log-wellness', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({message:text}) });
+            const data = await resp.json();
+            status.textContent = data.reply;
+            setTimeout(() => { status.textContent = ''; }, 3000);
         }
     </script>
 </body>

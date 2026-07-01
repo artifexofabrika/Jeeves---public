@@ -178,3 +178,23 @@ def memory_status():
     except:
         baseline_exists = False
     return f"Memory entries: {count}. Baseline: {'saved' if baseline_exists else 'none'}."
+
+def store_wellness_entry(text):
+    """Store a small text entry (e.g. meal, medication) directly into the memory lake."""
+    import datetime, uuid
+    ef = _make_ef()
+    client = chromadb.PersistentClient(path="/mnt/lake/index")
+    collection = client.get_or_create_collection(name="memory_lake", embedding_function=ef)
+    # For short wellness notes, store as a single chunk
+    chunk = text.strip()
+    if not chunk:
+        return
+    meta = {
+        "filename": "wellness_log.txt",
+        "source_path": "wellness_log",
+        "chunk_index": 0,
+        "ingested_at": datetime.datetime.now().isoformat(),
+        "hash": str(uuid.uuid4())
+    }
+    doc_id = f"wellness_{uuid.uuid4()}"
+    collection.add(documents=[chunk], metadatas=[meta], ids=[doc_id])
