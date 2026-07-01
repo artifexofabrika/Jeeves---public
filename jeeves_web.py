@@ -1,6 +1,6 @@
 import os, datetime, re, json, subprocess, requests
 from flask import Flask, render_template_string, request, jsonify, send_file
-import crypto_sim, trading_advisor, config
+import crypto_sim, trading_advisor, config, lake_utils, web_search
 import chromadb
 from chromadb.utils import embedding_functions
 
@@ -363,10 +363,62 @@ def index():
 def chat():
     data = request.get_json()
     user_msg = data.get('message', '')
+    # Handle /forget and memory commands
+    if user_msg.strip().lower() == "/forget":
+        lake_utils.clear_conversation_memory()
+        return jsonify({'reply': "Conversation memory cleared, sir. A fresh start."})
+    if user_msg.strip().lower() == "/memory-save":
+        msg = lake_utils.save_conversation_baseline()
+        return jsonify({'reply': msg})
+    if user_msg.strip().lower() == "/memory-restore":
+        msg = lake_utils.restore_conversation_baseline()
+        return jsonify({'reply': msg})
+    if user_msg.strip().lower() == "/memory-status":
+        msg = lake_utils.memory_status()
+        return jsonify({'reply': msg})
     if user_msg.startswith('/'):
         reply = handle_command(user_msg)
     else:
+        # 1. Memory context
+        memory_context = ""
+        try:
+            past = lake_utils.retrieve_conversation_context(user_msg, n=3)
+            if past:
+                memory_context = "Previous conversation highlights:\n" + "\n".join(past)
+        except:
+            pass
+        # 2. Lake context
+        lake_context = ""
+        try:
+            snippets, best_score = lake_utils.query_lake(user_msg, n=3)
+            if snippets and best_score < 0.6:
+                lake_context = "🌊 Private knowledge lake results:\n" + "\n".join(snippets)
+        except:
+            pass
+        # 3. Web search fallback
+        if not lake_context and config.WEB_SEARCH_ENABLED:
+            web_results = web_search.search(user_msg, max_results=3, daily_limit=50)
+            if web_results:
+                lake_context = "📡 Web results (nothing in your private lake):\n"
+                for r in web_results:
+                    lake_context += f"- {r['title']}: {r['snippet']}\n"
+        # 4. Combine and ground
+        all_context = ""
+        if memory_context:
+            all_context += memory_context + "\n\n"
+        if lake_context:
+            all_context += lake_context + "\n\n"
+        if all_context:
+            user_msg = f"Using ONLY the information provided below, answer the user's question. Do not use any outside knowledge. If the information does not contain the answer, say so plainly.\n\n{all_context}User question: {user_msg}"
         reply = ask_llm(user_msg)
+        # 5. Summarise exchange and store
+        try:
+            summary_prompt = f"Summarise the following exchange in one concise sentence, capturing the key topic.\nUser: {user_msg}\nAssistant: {reply}"
+            summary = ask_llm(summary_prompt)
+            if summary and len(summary) > 10:
+                lake_utils.store_conversation_summary(summary)
+        except:
+            pass
     return jsonify({'reply': reply})
 
 @app.route('/command', methods=['POST'])
@@ -671,6 +723,8 @@ from persona_module import persona_bp
 app.register_blueprint(persona_bp)
 from wellness_module import wellness_bp
 app.register_blueprint(wellness_bp)
+from dashboard_module import dashboard_bp
+app.register_blueprint(dashboard_bp)
 if __name__ == "__main__":
     print("Jeeves web interface starting on http://0.0.0.0:5000")
-    app.run(host="0.0.0.0", port=5000, debug=False)
+    app.run(host="0.0.0.0", port=5000, debug=False, ssl_context=("/home/jeeves/ssl/cert.pem", "/home/jeeves/ssl/key.pem"))

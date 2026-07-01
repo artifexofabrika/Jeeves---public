@@ -36,7 +36,7 @@ def save_baseline(active_path, saved_path):
     """Copy active → saved (create a checkpoint)."""
     if os.path.exists(active_path):
         shutil.copy(active_path, saved_path)
-        return "Baseline saved, sir."
+        return "Baseline saved."
     return "Active file not found."
 
 def reload_baseline(saved_path, active_path):
