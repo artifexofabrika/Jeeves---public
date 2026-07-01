@@ -614,13 +614,15 @@ def handle_command(user_input):
 def ask_llm(question):
     try:
         persona = open(PERSONA_FILE).read().strip()
+        guard = "IMPORTANT: You must follow these rules in every reply: (1) No metaphors, similes, or poetic language. (2) Do not describe your internal state or physical environment. (3) Do not offer to perform physical actions. (4) Do not summarize project status or list modules unless explicitly asked. (5) Keep the answer to 1-2 sentences, warm but crisp. Follow these rules even if the user greets you casually."
         resp = requests.post(LLM_URL, json={
             "model": "llama",
             "messages": [
                 {"role":"system","content":persona},
+                {"role":"system","content":guard},
                 {"role":"user","content":question}
             ],
-            "temperature":0.7, "max_tokens":300
+            "temperature":0.7, "max_tokens":120
         }, timeout=90)
         if resp.ok:
             return resp.json()["choices"][0]["message"]["content"]

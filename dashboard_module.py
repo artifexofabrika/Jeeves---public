@@ -11,7 +11,10 @@ whisper_model = None
 def get_whisper_model():
     global whisper_model
     if whisper_model is None:
+        import time
+        start = time.time()
         whisper_model = whisper.load_model("base.en")
+        print(f"Whisper model loaded in {time.time()-start:.1f}s", flush=True)
     return whisper_model
 
 # ------------------------------------------------------------
@@ -44,6 +47,7 @@ DASHBOARD_HTML = """<!DOCTYPE html>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Jeeves – Dashboard</title>
+    <link rel='icon' type='image/png' href='/favicon.png'>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #1a1a1a; color: #d4d4d4; height: 100vh; display: flex; flex-direction: column; }
