@@ -1,13 +1,5 @@
-import os, re, chromadb
-from pathlib import Path
-from dotenv import load_dotenv
+import re, chromadb
 from chromadb.utils import embedding_functions
-
-# Load environment once
-load_dotenv(Path(__file__).resolve().parent / '.env')
-load_dotenv(os.path.expanduser('~/.env'))
-
-HF_TOKEN = os.getenv("HF_TOKEN")
 
 STOPWORDS = {
     "a", "an", "the", "and", "or", "but", "in", "on", "at", "to", "for",
@@ -20,10 +12,13 @@ STOPWORDS = {
 }
 
 def _make_ef():
-    """Create an embedding function, passing the HF token if available."""
+    import os
+    from dotenv import load_dotenv
+    load_dotenv(os.path.expanduser('~/Beeker-mk1/.env'))
+    hf_token = os.getenv("HF_TOKEN")
     kwargs = {"model_name": "all-MiniLM-L6-v2"}
-    if HF_TOKEN:
-        kwargs["hf_api_key"] = HF_TOKEN
+    if hf_token:
+        kwargs["hf_api_key"] = hf_token
     return embedding_functions.SentenceTransformerEmbeddingFunction(**kwargs)
 
 def _keyword_overlap(query, document):
@@ -35,13 +30,14 @@ def _keyword_overlap(query, document):
     return found / len(query_words)
 
 def _exact_term_search(term, collection, n=5):
+    """Search the entire collection for documents containing the exact term (case‑insensitive)."""
     try:
         all_data = collection.get()
         docs = all_data.get('documents', [])
         matched = []
         term_lower = term.lower()
         for doc in docs:
-            if term_lower in doc.lower():
+            if re.search(r'\b' + re.escape(term_lower) + r'\b', doc.lower()):
                 matched.append(doc)
                 if len(matched) >= n:
                     break
@@ -54,39 +50,42 @@ def query_lake(query, n=3, semantic_weight=0.5, threshold=0.6):
     client = chromadb.PersistentClient(path="/mnt/lake/index")
     collection = client.get_or_create_collection(name="memory_lake", embedding_function=ef)
 
+    # Semantic search
     results = collection.query(query_texts=[query], n_results=max(10, n))
     docs = results.get('documents', [[]])[0]
     distances = results.get('distances', [[1.0]])[0]
 
-    terms = [w.lower() for w in re.findall(r'[a-zA-Z]+', query) if w.lower() not in STOPWORDS]
+    # Always collect exact‑match terms for technical/code‑like words
+    config_triggers = {'env', 'file', 'name', 'config', 'key', 'token', 'address', 'form', 'change', 'api', 'guide', 'persona', 'strategy', 'alpaca', 'brave', 'search', 'lake', 'ingest'}
+    code_terms = [w.lower() for w in re.findall(r'[a-zA-Z0-9_.]+', query) if '_' in w or '.' in w or w.isupper() or w.lower() in config_triggers]
     exact_docs = set()
-    for t in terms:
+    for t in code_terms:
         for d in _exact_term_search(t, collection, n=n):
             exact_docs.add(d)
 
-    if not docs and not exact_docs:
-        return [], 1.0
-
     scored = []
+    # Score semantic results
     for doc, dist in zip(docs, distances):
         kw = _keyword_overlap(query, doc)
         combined = semantic_weight * dist + (1.0 - semantic_weight) * (1.0 - kw)
         scored.append((combined, doc))
 
+    # Add exact matches with a very good score (0.0 = best)
     for doc in exact_docs:
         kw = _keyword_overlap(query, doc)
-        combined = semantic_weight * 0.8 + (1.0 - semantic_weight) * (1.0 - kw)
+        combined = semantic_weight * 0.1 + (1.0 - semantic_weight) * (1.0 - kw)  # strongly prefer exact matches
         scored.append((combined, doc))
 
     scored.sort(key=lambda x: x[0])
     best_score = scored[0][0] if scored else 1.0
 
+    # Filter by threshold
     filtered = [doc for score, doc in scored if score < threshold]
     if not filtered and exact_docs:
+        # if nothing passes threshold but we have exact matches, return them anyway
         filtered = list(exact_docs)[:n]
-        best_score = threshold - 0.1
+        best_score = 0.1
     return filtered[:n], best_score if filtered else 1.0
-
 
 # ──────────────────────────────────────────────
 # Conversation Memory Baseline (unchanged)
@@ -94,8 +93,11 @@ def query_lake(query, n=3, semantic_weight=0.5, threshold=0.6):
 MEMORY_COLLECTION = "conversation_memory"
 BASELINE_COLLECTION = "conversation_memory_baseline"
 
+def _memory_ef():
+    return _make_ef()
+
 def _memory_collection():
-    ef = _make_ef()
+    ef = _memory_ef()
     client = chromadb.PersistentClient(path="/mnt/lake/index")
     return client.get_or_create_collection(name=MEMORY_COLLECTION, embedding_function=ef)
 
@@ -123,7 +125,7 @@ def clear_conversation_memory():
         pass
 
 def save_conversation_baseline():
-    ef = _make_ef()
+    ef = _memory_ef()
     client = chromadb.PersistentClient(path="/mnt/lake/index")
     try:
         client.delete_collection(name=BASELINE_COLLECTION)
@@ -143,7 +145,7 @@ def save_conversation_baseline():
     return f"Conversation baseline saved ({mem.count()} entries)."
 
 def restore_conversation_baseline():
-    ef = _make_ef()
+    ef = _memory_ef()
     client = chromadb.PersistentClient(path="/mnt/lake/index")
     try:
         baseline = client.get_collection(name=BASELINE_COLLECTION)

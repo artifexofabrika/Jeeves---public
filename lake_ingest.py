@@ -107,7 +107,7 @@ def main():
         if not filepath.is_file():
             continue
         # Only process text-like files (add more extensions as needed)
-        if filepath.suffix.lower() not in [".txt", ".md", ".csv", ".json"]:
+        if filepath.suffix.lower() not in [".txt", ".md", ".csv", ".json", ".py", ".sh", ".service", ".timer", ".html", ".css", ".js", ".conf", ".yml", ".yaml", ".toml", ".ini"]:
             continue
 
         abs_path = str(filepath.resolve())

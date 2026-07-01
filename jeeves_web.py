@@ -409,7 +409,7 @@ def chat():
         if lake_context:
             all_context += lake_context + "\n\n"
         if all_context:
-            user_msg = f"Using ONLY the information provided below, answer the user's question. Do not use any outside knowledge. If the information does not contain the answer, say so plainly.\n\n{all_context}User question: {user_msg}"
+            user_msg = f"CRITICAL INSTRUCTION: You are a help desk agent. A user has asked a configuration question. Below is the official product manual. You must answer the question by quoting or paraphrasing the EXACT steps from the manual. Do not invent any file names, commands, or procedures. If the manual does not contain the answer, say \"I cannot find that information in the manual.\" Never, under any circumstances, refer to files or methods that are not explicitly listed below.\n\nOFFICIAL MANUAL:\n{all_context}\n\nQuestion: {user_msg}"
         reply = ask_llm(user_msg)
         # 5. Summarise exchange and store
         try:
