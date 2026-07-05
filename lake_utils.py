@@ -212,3 +212,20 @@ def store_wellness_entry(text):
     }
     doc_id = f"wellness_{uuid.uuid4()}"
     collection.add(documents=[chunk], metadatas=[meta], ids=[doc_id])
+
+def store_raw_message(user_msg):
+    """Store the raw user message directly into the memory lake."""
+    try:
+        import datetime, uuid
+        ef = _make_ef()
+        client = chromadb.PersistentClient(path="/mnt/lake/index")
+        collection = client.get_or_create_collection(name="memory_lake", embedding_function=ef)
+        timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+        doc_id = f"chat_{timestamp}_{hash(user_msg) % 10000}"
+        collection.add(
+            documents=[user_msg],
+            ids=[doc_id],
+            metadatas=[{"filename": "chat_log.txt", "timestamp": timestamp}]
+        )
+    except:
+        pass

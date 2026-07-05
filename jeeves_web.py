@@ -1,6 +1,6 @@
 import os, datetime, re, json, subprocess, requests
 from flask import Flask, render_template_string, request, jsonify, send_file
-import crypto_sim, trading_advisor, config, lake_utils, web_search, lake_utils, web_search
+import crypto_sim, trading_advisor, config, lake_utils, web_search, personal_graph
 import chromadb
 from chromadb.utils import embedding_functions
 
@@ -366,6 +366,10 @@ def chat():
     user_msg = data.get('message', '')
     lower_msg = user_msg.lower()
 
+    # Shared personal‑query keywords (used for gating retrieval and graph injection)
+    PERSONAL_KEYWORDS = ('know about me', 'my', 'i am', 'medication', 'project', 'mood', 'feeling', 'accomplish', 'live in', 'moved', 'career', 'health', 'weight', 'knee', 'diet', 'coffee', 'philosophy', 'wife', 'broke up', 'girlfriend', 'deadline', 'supplement')
+
+
     # ---- Memory commands ----
     if user_msg.strip().lower() == "/forget":
         lake_utils.clear_conversation_memory()
@@ -383,6 +387,7 @@ def chat():
     # ---- Explicit command handlers ----
     if user_msg.startswith('/'):
         reply = handle_command(user_msg)
+        lake_utils.store_raw_message(user_msg)
         return jsonify({'reply': reply})
 
     # ---- Wellness logging ----
@@ -394,7 +399,7 @@ def chat():
         return jsonify({'reply': f"Logged, sir: {user_msg}"})
 
     # ---- Wellness retrieval ----
-    if 'for wellness' in lower_msg or 'in the wellness module' in lower_msg:
+    if 'for wellness' in lower_msg or 'in the wellness module' in lower_msg or 'in wellness' in lower_msg:
         try:
             import chromadb
             ef = chromadb.utils.embedding_functions.SentenceTransformerEmbeddingFunction(model_name="all-MiniLM-L6-v2")
@@ -432,6 +437,7 @@ def chat():
                         break
                 prompt = f"You are a helpful wellness assistant. Using ONLY the wellness data below, answer the user's question. You may count occurrences, summarise, and estimate nutritional values using your general knowledge. Be brief and conversational. Do not add disclaimers.\n\nWellness data:\n{combined}\n\nUser question: {query_part}"
                 reply = ask_llm(prompt)
+                lake_utils.store_raw_message(user_msg)
                 return jsonify({'reply': reply})
             else:
                 return jsonify({'reply': "No wellness entries found, sir."})
@@ -440,26 +446,41 @@ def chat():
 
 # ---- Operating manual ----
     if 'in your operating manual' in lower_msg or 'in the operating manual' in lower_msg:
-            try:
-                query_part = user_msg
-                for phrase in ['in your operating manual', 'in the operating manual']:
-                    idx = lower_msg.find(phrase)
-                    if idx != -1:
-                        query_part = user_msg[idx+len(phrase):].strip().lstrip(',: ')
-                        break
-                docs, score = lake_utils.query_lake("Configuration Guide: " + query_part, n=5)
-                if docs:
-                    guide_text = "\n".join(docs)
-                    prompt = f"CRITICAL INSTRUCTION: You are a help desk agent. Below is the official product manual. Answer the user's question by quoting or paraphrasing the EXACT steps from the manual. Do not invent any file names, commands, or procedures.\n\nOFFICIAL MANUAL:\n{guide_text}\n\nUser question: {query_part}"
-                    reply = ask_llm(prompt)
-                    return jsonify({'reply': reply})
-                else:
-                    return jsonify({'reply': "I cannot find the relevant section in the operating manual, sir."})
-            except Exception as e:
-                return jsonify({'reply': f"Manual lookup error: {e}"})
+        try:
+            query_part = user_msg
+            for phrase in ['in your operating manual', 'in the operating manual']:
+                idx = lower_msg.find(phrase)
+                if idx != -1:
+                    query_part = user_msg[idx+len(phrase):].strip().lstrip(',: ')
+                    break
+            docs, score = lake_utils.query_lake("Configuration Guide: " + query_part, n=5)
+            if docs:
+                guide_text = "\n".join(docs)
+                prompt = f"CRITICAL INSTRUCTION: You are a help desk agent. Below is the official product manual. Answer the user's question by quoting or paraphrasing the EXACT steps from the manual. Do not invent any file names, commands, or procedures.\n\nOFFICIAL MANUAL:\n{guide_text}\n\nUser question: {query_part}"
+                reply = ask_llm(prompt)
+                return jsonify({'reply': reply})
+            else:
+                return jsonify({'reply': "I cannot find the relevant section in the operating manual, sir."})
+        except Exception as e:
+            return jsonify({'reply': f"Manual lookup error: {e}"})
 
     # ---- Default: lake‑first, web‑second, warm persona ----
+
+    # Fast path: casual, non‑personal messages skip retrieval for speed
+    if not any(kw in lower_msg for kw in PERSONAL_KEYWORDS):
+        persona = open(PERSONA_FILE).read().strip()
+        guard = "IMPORTANT: You must follow these rules in every reply: (1) No metaphors, similes, or poetic language. (2) Do not describe your internal state or physical environment. (3) Do not offer to perform physical actions. (4) Do not summarize project status or list modules unless explicitly asked. (5) Keep the answer to 1-2 sentences, warm but crisp. Follow these rules even if the user greets you casually."
+        prompt = f"System: {persona}\n\n{guard}\n\nUser: {user_msg}"
+        reply = ask_llm(prompt)
+        lake_utils.store_raw_message(user_msg)
+        return jsonify({'reply': reply})
+
     # Memory context (suppressed for questions)
+    # 0. Personal Knowledge Graph – temporarily disabled; moved to final prompt assembly
+    # personal_summary = personal_graph.graph_summary()
+    # if personal_summary:
+    #     user_msg = f"..."
+
     memory_context = ""
     is_question = '?' in user_msg or lower_msg.strip().startswith(('what','how','do','can','is','are','could','would','should','tell','give','explain','describe'))
     if not is_question:
@@ -497,11 +518,24 @@ def chat():
                 lake_context += f"- {r['title']}: {r['snippet']}\n"
 
     # Assemble final prompt
+    
+
     all_context = ""
     if memory_context:
         all_context += memory_context + "\n\n"
     if lake_context:
         all_context += lake_context + "\n\n"
+
+    # Inject personal knowledge graph summary (full only for personal queries)
+    # Use shared PERSONAL_KEYWORDS for gating graph injection
+    if any(kw in lower_msg for kw in PERSONAL_KEYWORDS):
+        personal_summary = personal_graph.graph_summary()
+        if personal_summary:
+            all_context += "Personal Knowledge Graph:\n" + personal_summary + "\n\n"
+    else:
+        # Minimal identity reminder
+        all_context += "You are speaking with Randy Wolf. Address him as sir.\n\n"
+
     if all_context:
         user_msg = f"Using ONLY the information provided below, answer the user's question. If the information does not contain the answer, say so. Keep the reply warm and conversational.\n\n{all_context}\n\nUser question: {user_msg}"
 

@@ -42,3 +42,5 @@ CRYPTO_STRATEGY_FILE = os.path.expanduser(os.getenv("CRYPTO_STRATEGY_FILE", "~/c
 CRYPTO_MIRROR_LOG = os.path.expanduser(os.getenv("CRYPTO_MIRROR_LOG", "~/crypto_sim_mirror.log"))
 TRADING_STRATEGY_FILE = os.path.expanduser(os.getenv("TRADING_STRATEGY_FILE", "~/trading_strategy.txt"))
 TRADING_MIRROR_LOG = os.path.expanduser(os.getenv("TRADING_MIRROR_LOG", "~/trading_mirror.log"))
+
+USER_NAME = os.getenv("USER_NAME", "")

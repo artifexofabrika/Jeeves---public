@@ -44,7 +44,7 @@ def get_price(symbol):
     # Strip any existing "-USD" suffix so we can add it cleanly
     clean = symbol.upper().replace("-USD", "")
     try:
-        product = client.get_product(clean + "-USD")
+        product = client.get_product(clean + "-USDT")
         return float(product['price'])
     except:
         return None
@@ -72,7 +72,7 @@ def place_market_order(symbol, qty, side):
         clean_sym = symbol.upper().replace("-USD", "")
         order = client.market_order(
             client_order_id=f"jeeves_{int(time.time())}",
-            product_id=clean_sym + "-USD",
+            product_id=clean_sym + "-USDT",
             side=side.upper(),
             base_size=str(round_qty(symbol, qty))
         )
@@ -175,8 +175,8 @@ def main():
     prompt += 'Strategy:\n' + strategy + '\n\n'
     prompt += 'Current state:\n' + data_summary + '\n'
     prompt += 'Respond with a SINGLE JSON object, never multiple. The object must follow this exact format:\n'
-    prompt += '{"action": "buy" or "sell" or "hold", "symbol": "SYMBOL-USD", "quantity": float, "rationale": "brief explanation"}\n\n'
-    prompt += 'Recommend exactly ONE trade. Output only one JSON object on a single line. If no trade, set action to "hold" and quantity to 0. Do not exceed a trade value of $' + str(MAX_ORDER_VALUE) + '.'
+    prompt += '{"action": "buy" or "sell" or "hold", "symbol": "SYMBOL-USDT", "quantity": float, "rationale": "brief explanation"}\n\n'
+    prompt += 'Recommend exactly ONE trade. Output only one JSON object on a single line. If no trade, set action to "hold" and quantity to 0. Ensure the quantity you choose, when multiplied by the current market price, results in a total value of $' + str(MAX_ORDER_VALUE) + ' or less. Do not propose any trade that would exceed this cap.'
 
     llm_url = config.LLM_URL
     try:
@@ -215,10 +215,9 @@ def main():
                             log("Quantity too small for " + symbol + ". Skipping.")
                             return
 
-                        # Telegram approval gate
-                        approval_msg = "Coinbase Advisor recommends:\n\n" + action.upper() + " " + str(qty) + " " + symbol + "-USD\nValue: $" + str(round(order_value,2)) + "\nRationale: " + rationale + "\n\nReply /approve within 5 minutes to execute, or ignore to cancel."
-                        send_telegram(approval_msg)
-                        log("Approval requested via Telegram.")
+                        # Autonomous execution – notify and execute immediately
+                        info_msg = "Coinbase Advisor executing:\n\n" + action.upper() + " " + str(qty) + " " + symbol + "-USD\nValue: $" + str(round(order_value,2)) + "\nRationale: " + rationale
+                        send_telegram(info_msg)
 
                         log("Autonomous mode – executing immediately.")
                         order_id, error_msg = place_market_order(symbol, qty, action)
