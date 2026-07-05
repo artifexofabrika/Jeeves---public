@@ -361,6 +361,7 @@ def index():
 
 @app.route('/chat', methods=['POST'])
 def chat():
+    import datetime
     data = request.get_json()
     user_msg = data.get('message', '')
     lower_msg = user_msg.lower()
@@ -400,10 +401,9 @@ def chat():
             client = chromadb.PersistentClient(path="/mnt/lake/index")
             # Free-text wellness logs
             mem_collection = client.get_or_create_collection(name="memory_lake", embedding_function=ef)
-            all_data = mem_collection.get()
-            docs = all_data.get('documents', [])
-            metas = all_data.get('metadatas', [])
-            entries = [d for d, m in zip(docs, metas) if m and m.get('filename') == 'wellness_log.txt']
+            result = mem_collection.get(where={"filename": "wellness_log.txt"})
+            entries = result.get("documents", [])
+            entries = [e for e in entries if datetime.datetime.now().strftime("%Y-%m-%d") in e]
             # Structured wellness data
             try:
                 data_collection = client.get_collection(name="wellness_data")
