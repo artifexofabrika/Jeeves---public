@@ -426,28 +426,23 @@ def chat():
 
     # ---- Operating manual ----
     if 'in your operating manual' in lower_msg or 'in the operating manual' in lower_msg:
-        try:
-            import chromadb
-            ef = chromadb.utils.embedding_functions.SentenceTransformerEmbeddingFunction(model_name="all-MiniLM-L6-v2")
-            client = chromadb.PersistentClient(path="/mnt/lake/index")
-            collection = client.get_or_create_collection(name="memory_lake", embedding_function=ef)
-            all_docs = collection.get()['documents']
-            guide_chunks = [d for d in all_docs if 'Jeeves Configuration Guide' in d[:200]]
-            if guide_chunks:
-                guide_text = "\n".join(guide_chunks)
+            try:
                 query_part = user_msg
                 for phrase in ['in your operating manual', 'in the operating manual']:
                     idx = lower_msg.find(phrase)
                     if idx != -1:
                         query_part = user_msg[idx+len(phrase):].strip().lstrip(',: ')
                         break
-                prompt = f"CRITICAL INSTRUCTION: You are a help desk agent. Below is the official product manual. Answer the user's question by quoting or paraphrasing the EXACT steps from the manual. Do not invent any file names, commands, or procedures.\n\nOFFICIAL MANUAL:\n{guide_text}\n\nUser question: {query_part}"
-                reply = ask_llm(prompt)
-                return jsonify({'reply': reply})
-            else:
-                return jsonify({'reply': "I cannot find the operating manual in my knowledge base, sir."})
-        except Exception as e:
-            return jsonify({'reply': f"Manual lookup error: {e}"})
+                docs, score = lake_utils.query_lake("Configuration Guide: " + query_part, n=5)
+                if docs:
+                    guide_text = "\n".join(docs)
+                    prompt = f"CRITICAL INSTRUCTION: You are a help desk agent. Below is the official product manual. Answer the user's question by quoting or paraphrasing the EXACT steps from the manual. Do not invent any file names, commands, or procedures.\n\nOFFICIAL MANUAL:\n{guide_text}\n\nUser question: {query_part}"
+                    reply = ask_llm(prompt)
+                    return jsonify({'reply': reply})
+                else:
+                    return jsonify({'reply': "I cannot find the relevant section in the operating manual, sir."})
+            except Exception as e:
+                return jsonify({'reply': f"Manual lookup error: {e}"})
 
     # ---- Default: lake‑first, web‑second, warm persona ----
     # Memory context (suppressed for questions)
@@ -814,6 +809,8 @@ from wellness_module import wellness_bp
 app.register_blueprint(wellness_bp)
 from dashboard_module import dashboard_bp
 app.register_blueprint(dashboard_bp)
+from settings_module import settings_bp
+app.register_blueprint(settings_bp)
 if __name__ == "__main__":
     print("Jeeves web interface starting on http://0.0.0.0:5000")
     app.run(host="0.0.0.0", port=5000, debug=False, ssl_context=("/home/jeeves/ssl/cert.pem", "/home/jeeves/ssl/key.pem"))

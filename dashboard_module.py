@@ -233,6 +233,90 @@ def recent_trades():
         trades.append(f"Crypto sim unavailable: {e}")
     return "\n".join(trades) if trades else "No recent trades."
 
+
+
+# --- Update API Keys ---
+@dashboard_bp.route("/update_config", methods=["POST"])
+def update_config():
+    import subprocess
+    data = request.get_json()
+    key = data.get("coinbase_api_key", "").strip()
+    secret = data.get("coinbase_api_secret", "").strip()
+    passphrase = data.get("coinbase_passphrase", "").strip()
+
+    if not key or not secret:
+        return jsonify({"status": "error", "message": "API Key and Secret are required."}), 400
+
+    env_path = os.path.expanduser("~/Beeker-mk1/.env")
+    lines = []
+    with open(env_path, "r") as f:
+        lines = f.readlines()
+
+    new_lines = []
+    updated_key = False
+    updated_secret = False
+    updated_pass = False
+    for line in lines:
+        if line.startswith("COINBASE_API_KEY="):
+            new_lines.append(f"COINBASE_API_KEY={key}\n")
+            updated_key = True
+        elif line.startswith("COINBASE_API_SECRET="):
+            new_lines.append(f"COINBASE_API_SECRET={secret}\n")
+            updated_secret = True
+        elif line.startswith("COINBASE_PASSPHRASE="):
+            if passphrase:
+                new_lines.append(f"COINBASE_PASSPHRASE={passphrase}\n")
+            else:
+                new_lines.append(line)
+            updated_pass = True
+        else:
+            new_lines.append(line)
+    if not updated_key:
+        new_lines.append(f"COINBASE_API_KEY={key}\n")
+    if not updated_secret:
+        new_lines.append(f"COINBASE_API_SECRET={secret}\n")
+    if passphrase and not updated_pass:
+        new_lines.append(f"COINBASE_PASSPHRASE={passphrase}\n")
+
+    with open(env_path, "w") as f:
+        f.writelines(new_lines)
+
+    # Restart the coinbase advisor and the web service to pick up new keys
+    subprocess.run(["sudo", "systemctl", "restart", "coinbase-advisor.service"], capture_output=True)
+    # Reload config in the running app – not possible easily, but the advisor will pick up the new keys on next run
+
+    return jsonify({"status": "ok", "message": "API keys updated. The advisor will use the new keys on its next run."})
+
+
+@dashboard_bp.route("/add_api_key", methods=["POST"])
+def add_api_key():
+    import json, os as _os
+    data = request.get_json()
+    label = data.get("label", "").strip()
+    key = data.get("key", "").strip()
+    secret = data.get("secret", "").strip()
+    passphrase = data.get("passphrase", "").strip()
+    module = data.get("module", "").strip()
+    if not label or not key or not secret:
+        return jsonify({"status": "error", "message": "Label, Key, and Secret are required."}), 400
+    key_path = _os.path.expanduser("~/api_keys.json")
+    keys = []
+    if _os.path.exists(key_path):
+        with open(key_path, "r") as f:
+            keys = json.load(f)
+    # Remove existing entry with same label and module
+    keys = [k for k in keys if not (k["label"] == label and k["module"] == module)]
+    keys.append({
+        "label": label,
+        "key": key,
+        "secret": secret,
+        "passphrase": passphrase,
+        "module": module
+    })
+    with open(key_path, "w") as f:
+        json.dump(keys, f, indent=2)
+    return jsonify({"status": "ok", "message": f"API key '{label}' saved for {module}."})
+
 DASHBOARD_HTML = """<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -283,6 +367,7 @@ DASHBOARD_HTML = """<!DOCTYPE html>
             <button class="tab" data-tab="datalake" onclick="showTab('datalake')">🌊 Data Lake</button>
             <button class="tab" data-tab="trading" onclick="showTab('trading')">📈 Trading</button>
             <button class="tab" data-tab="email" onclick="showTab('email')">📧 Email</button>
+            <a href="/settings" class="tab" style="text-decoration:none;color:#d4d4d4;">⚙️ Settings</a>
         </div>
         <div class="tab-content">
             <div id="tab-persona" class="panel" style="display:block;">
@@ -292,12 +377,42 @@ DASHBOARD_HTML = """<!DOCTYPE html>
                     <input type="text" id="personaFeedbackInput" placeholder="Add feedback for the Mirror..." style="flex:1;padding:0.4rem;background:#2c2c2c;border:1px solid #555;color:#fff;border-radius:4px;font-size:0.85rem;" onkeypress="if(event.key==='Enter') submitFeedback()">
                     <button class="btn" onclick="submitFeedback()" style="flex-shrink:0;padding:0.4rem 0.8rem;background:#c0a878;border:none;border-radius:4px;color:#1a1a1a;font-weight:bold;">✨ Refine</button>
                 </div>
-            </div>
+                
             <div id="tab-wellness" class="panel" style="display:none;">
                 <div style="display:flex;gap:0.4rem;align-items:center;">
                     <input type="text" id="wellnessInput" placeholder="e.g., had 4 eggs and 2 tbsp coconut oil..." style="flex:1;padding:0.4rem;background:#2c2c2c;border:1px solid #555;color:#fff;border-radius:4px;font-size:0.85rem;" onkeypress="if(event.key==='Enter') logWellness()">
                     <button class="btn" onclick="logWellness()" style="padding:0.4rem 0.8rem;background:#c0a878;border:none;border-radius:4px;color:#1a1a1a;font-weight:bold;">📝 Log</button>
+                                <!-- API Key Form Wellness -->
+                <div style="margin-top:1rem; border:1px solid #444; border-radius:4px; padding:0.6rem;">
+                    <div style="font-size:1.0rem;color:#c0a878;margin-bottom:0.5rem;">🔑 Add Wellness Key</div>
+                    <input type="text" id="apiLabel_Wellness" placeholder="Label (e.g., My Coinbase)" style="width:100%;padding:0.4rem;background:#2c2c2c;border:1px solid #555;color:#fff;border-radius:4px;font-size:0.85rem;margin-bottom:0.4rem;">
+                    <input type="text" id="apiKey_Wellness" placeholder="API Key" style="width:100%;padding:0.4rem;background:#2c2c2c;border:1px solid #555;color:#fff;border-radius:4px;font-size:0.85rem;margin-bottom:0.4rem;">
+                    <input type="password" id="apiSecret_Wellness" placeholder="API Secret" style="width:100%;padding:0.4rem;background:#2c2c2c;border:1px solid #555;color:#fff;border-radius:4px;font-size:0.85rem;margin-bottom:0.4rem;">
+                    <input type="text" id="apiPassphrase_Wellness" placeholder="Passphrase (optional)" style="width:100%;padding:0.4rem;background:#2c2c2c;border:1px solid #555;color:#fff;border-radius:4px;font-size:0.85rem;margin-bottom:0.4rem;">
+                    <button onclick="saveApiKey('Wellness')" style="padding:0.35rem 0.7rem;background:#c0a878;border:none;border-radius:3px;color:#1a1a1a;font-weight:bold;">Save Key</button>
+                    <span id="apiStatus_Wellness" style="margin-left:0.5rem;font-size:0.85rem;color:#888;"></span>
                 </div>
+                <!-- API Key Form Wellness -->
+                <div style="margin-top:1rem; border:1px solid #444; border-radius:4px; padding:0.6rem;">
+                    <div style="font-size:1.0rem;color:#c0a878;margin-bottom:0.5rem;">🔑 Add Wellness Key</div>
+                    <input type="text" id="apiLabel_Wellness" placeholder="Label (e.g., My Coinbase)" style="width:100%;padding:0.4rem;background:#2c2c2c;border:1px solid #555;color:#fff;border-radius:4px;font-size:0.85rem;margin-bottom:0.4rem;">
+                    <input type="text" id="apiKey_Wellness" placeholder="API Key" style="width:100%;padding:0.4rem;background:#2c2c2c;border:1px solid #555;color:#fff;border-radius:4px;font-size:0.85rem;margin-bottom:0.4rem;">
+                    <input type="password" id="apiSecret_Wellness" placeholder="API Secret" style="width:100%;padding:0.4rem;background:#2c2c2c;border:1px solid #555;color:#fff;border-radius:4px;font-size:0.85rem;margin-bottom:0.4rem;">
+                    <input type="text" id="apiPassphrase_Wellness" placeholder="Passphrase (optional)" style="width:100%;padding:0.4rem;background:#2c2c2c;border:1px solid #555;color:#fff;border-radius:4px;font-size:0.85rem;margin-bottom:0.4rem;">
+                    <button onclick="saveApiKey('Wellness')" style="padding:0.35rem 0.7rem;background:#c0a878;border:none;border-radius:3px;color:#1a1a1a;font-weight:bold;">Save Key</button>
+                    <span id="apiStatus_Wellness" style="margin-left:0.5rem;font-size:0.85rem;color:#888;"></span>
+                </div>
+                <!-- API Key Form Wellness -->
+                <div style="margin-top:1rem; border:1px solid #444; border-radius:4px; padding:0.6rem;">
+                    <div style="font-size:1.0rem;color:#c0a878;margin-bottom:0.5rem;">🔑 Add Wellness Key</div>
+                    <input type="text" id="apiLabel_Wellness" placeholder="Label (e.g., My Strava)" style="width:100%;padding:0.4rem;background:#2c2c2c;border:1px solid #555;color:#fff;border-radius:4px;font-size:0.85rem;margin-bottom:0.4rem;">
+                    <input type="text" id="apiKey_Wellness" placeholder="API Key" style="width:100%;padding:0.4rem;background:#2c2c2c;border:1px solid #555;color:#fff;border-radius:4px;font-size:0.85rem;margin-bottom:0.4rem;">
+                    <input type="password" id="apiSecret_Wellness" placeholder="API Secret" style="width:100%;padding:0.4rem;background:#2c2c2c;border:1px solid #555;color:#fff;border-radius:4px;font-size:0.85rem;margin-bottom:0.4rem;">
+                    <input type="text" id="apiPassphrase_Wellness" placeholder="Passphrase (optional)" style="width:100%;padding:0.4rem;background:#2c2c2c;border:1px solid #555;color:#fff;border-radius:4px;font-size:0.85rem;margin-bottom:0.4rem;">
+                    <button onclick="saveApiKey('Wellness')" style="padding:0.35rem 0.7rem;background:#c0a878;border:none;border-radius:3px;color:#1a1a1a;font-weight:bold;">Save Key</button>
+                    <span id="apiStatus_Wellness" style="margin-left:0.5rem;font-size:0.85rem;color:#888;"></span>
+                </div>
+</div>
                 <div id="wellnessStatus" style="margin-top:0.5rem;font-size:0.85rem;color:#888;"></div>
             </div>
             <div id="tab-datalake" class="panel" style="display:none;">
@@ -329,7 +444,37 @@ DASHBOARD_HTML = """<!DOCTYPE html>
                 </div>
                 <!-- Stocks sub-panel -->
                 <div id="subtrading-stocks" style="display:block;">
-                    <div id="stockStrategySummary" style="background:#1e1e1e;padding:0.6rem;border-radius:4px;min-height:3rem;max-height:300px;overflow-y:auto;white-space:pre-wrap;">Loading...</div>
+                    <div id="stockStrategySummary" style="background:#1e1e1e;padding:0.6rem;border-radius:4px;min-height:3rem;max-height:300px;overflow-y:auto;white-space:pre-wrap;">Loading...                <!-- API Key Form Stocks -->
+                <div style="margin-top:1rem; border:1px solid #444; border-radius:4px; padding:0.6rem;">
+                    <div style="font-size:1.0rem;color:#c0a878;margin-bottom:0.5rem;">🔑 Add Stocks Key</div>
+                    <input type="text" id="apiLabel_Stocks" placeholder="Label (e.g., My Coinbase)" style="width:100%;padding:0.4rem;background:#2c2c2c;border:1px solid #555;color:#fff;border-radius:4px;font-size:0.85rem;margin-bottom:0.4rem;">
+                    <input type="text" id="apiKey_Stocks" placeholder="API Key" style="width:100%;padding:0.4rem;background:#2c2c2c;border:1px solid #555;color:#fff;border-radius:4px;font-size:0.85rem;margin-bottom:0.4rem;">
+                    <input type="password" id="apiSecret_Stocks" placeholder="API Secret" style="width:100%;padding:0.4rem;background:#2c2c2c;border:1px solid #555;color:#fff;border-radius:4px;font-size:0.85rem;margin-bottom:0.4rem;">
+                    <input type="text" id="apiPassphrase_Stocks" placeholder="Passphrase (optional)" style="width:100%;padding:0.4rem;background:#2c2c2c;border:1px solid #555;color:#fff;border-radius:4px;font-size:0.85rem;margin-bottom:0.4rem;">
+                    <button onclick="saveApiKey('Stocks')" style="padding:0.35rem 0.7rem;background:#c0a878;border:none;border-radius:3px;color:#1a1a1a;font-weight:bold;">Save Key</button>
+                    <span id="apiStatus_Stocks" style="margin-left:0.5rem;font-size:0.85rem;color:#888;"></span>
+                </div>
+                <!-- API Key Form Stocks -->
+                <div style="margin-top:1rem; border:1px solid #444; border-radius:4px; padding:0.6rem;">
+                    <div style="font-size:1.0rem;color:#c0a878;margin-bottom:0.5rem;">🔑 Add Stocks Key</div>
+                    <input type="text" id="apiLabel_Stocks" placeholder="Label (e.g., My Coinbase)" style="width:100%;padding:0.4rem;background:#2c2c2c;border:1px solid #555;color:#fff;border-radius:4px;font-size:0.85rem;margin-bottom:0.4rem;">
+                    <input type="text" id="apiKey_Stocks" placeholder="API Key" style="width:100%;padding:0.4rem;background:#2c2c2c;border:1px solid #555;color:#fff;border-radius:4px;font-size:0.85rem;margin-bottom:0.4rem;">
+                    <input type="password" id="apiSecret_Stocks" placeholder="API Secret" style="width:100%;padding:0.4rem;background:#2c2c2c;border:1px solid #555;color:#fff;border-radius:4px;font-size:0.85rem;margin-bottom:0.4rem;">
+                    <input type="text" id="apiPassphrase_Stocks" placeholder="Passphrase (optional)" style="width:100%;padding:0.4rem;background:#2c2c2c;border:1px solid #555;color:#fff;border-radius:4px;font-size:0.85rem;margin-bottom:0.4rem;">
+                    <button onclick="saveApiKey('Stocks')" style="padding:0.35rem 0.7rem;background:#c0a878;border:none;border-radius:3px;color:#1a1a1a;font-weight:bold;">Save Key</button>
+                    <span id="apiStatus_Stocks" style="margin-left:0.5rem;font-size:0.85rem;color:#888;"></span>
+                </div>
+                <!-- API Key Form Stocks -->
+                <div style="margin-top:1rem; border:1px solid #444; border-radius:4px; padding:0.6rem;">
+                    <div style="font-size:1.0rem;color:#c0a878;margin-bottom:0.5rem;">🔑 Add Stocks Key</div>
+                    <input type="text" id="apiLabel_Stocks" placeholder="Label (e.g., My Alpaca)" style="width:100%;padding:0.4rem;background:#2c2c2c;border:1px solid #555;color:#fff;border-radius:4px;font-size:0.85rem;margin-bottom:0.4rem;">
+                    <input type="text" id="apiKey_Stocks" placeholder="API Key" style="width:100%;padding:0.4rem;background:#2c2c2c;border:1px solid #555;color:#fff;border-radius:4px;font-size:0.85rem;margin-bottom:0.4rem;">
+                    <input type="password" id="apiSecret_Stocks" placeholder="API Secret" style="width:100%;padding:0.4rem;background:#2c2c2c;border:1px solid #555;color:#fff;border-radius:4px;font-size:0.85rem;margin-bottom:0.4rem;">
+                    <input type="text" id="apiPassphrase_Stocks" placeholder="Passphrase (optional)" style="width:100%;padding:0.4rem;background:#2c2c2c;border:1px solid #555;color:#fff;border-radius:4px;font-size:0.85rem;margin-bottom:0.4rem;">
+                    <button onclick="saveApiKey('Stocks')" style="padding:0.35rem 0.7rem;background:#c0a878;border:none;border-radius:3px;color:#1a1a1a;font-weight:bold;">Save Key</button>
+                    <span id="apiStatus_Stocks" style="margin-left:0.5rem;font-size:0.85rem;color:#888;"></span>
+                </div>
+</div>
                     <div style="margin-top:0.6rem;display:flex;gap:0.4rem;">
                         <input type="text" id="stockFeedbackInput" placeholder="Add feedback for stock strategy..." style="flex:1;padding:0.4rem;background:#2c2c2c;border:1px solid #555;color:#fff;border-radius:4px;font-size:0.85rem;" onkeypress="if(event.key==='Enter') refineStocks()">
                         <button class="btn" onclick="refineStocks()" style="flex-shrink:0;">✨ Refine</button>
@@ -341,7 +486,37 @@ DASHBOARD_HTML = """<!DOCTYPE html>
                 </div>
                 <!-- Crypto sub-panel -->
                 <div id="subtrading-crypto" style="display:none;">
-                    <div id="cryptoStrategySummary" style="background:#1e1e1e;padding:0.6rem;border-radius:4px;min-height:3rem;max-height:300px;overflow-y:auto;white-space:pre-wrap;">Loading...</div>
+                    <div id="cryptoStrategySummary" style="background:#1e1e1e;padding:0.6rem;border-radius:4px;min-height:3rem;max-height:300px;overflow-y:auto;white-space:pre-wrap;">Loading...                <!-- API Key Form Crypto -->
+                <div style="margin-top:1rem; border:1px solid #444; border-radius:4px; padding:0.6rem;">
+                    <div style="font-size:1.0rem;color:#c0a878;margin-bottom:0.5rem;">🔑 Add Crypto Key</div>
+                    <input type="text" id="apiLabel_Crypto" placeholder="Label (e.g., My Coinbase)" style="width:100%;padding:0.4rem;background:#2c2c2c;border:1px solid #555;color:#fff;border-radius:4px;font-size:0.85rem;margin-bottom:0.4rem;">
+                    <input type="text" id="apiKey_Crypto" placeholder="API Key" style="width:100%;padding:0.4rem;background:#2c2c2c;border:1px solid #555;color:#fff;border-radius:4px;font-size:0.85rem;margin-bottom:0.4rem;">
+                    <input type="password" id="apiSecret_Crypto" placeholder="API Secret" style="width:100%;padding:0.4rem;background:#2c2c2c;border:1px solid #555;color:#fff;border-radius:4px;font-size:0.85rem;margin-bottom:0.4rem;">
+                    <input type="text" id="apiPassphrase_Crypto" placeholder="Passphrase (optional)" style="width:100%;padding:0.4rem;background:#2c2c2c;border:1px solid #555;color:#fff;border-radius:4px;font-size:0.85rem;margin-bottom:0.4rem;">
+                    <button onclick="saveApiKey('Crypto')" style="padding:0.35rem 0.7rem;background:#c0a878;border:none;border-radius:3px;color:#1a1a1a;font-weight:bold;">Save Key</button>
+                    <span id="apiStatus_Crypto" style="margin-left:0.5rem;font-size:0.85rem;color:#888;"></span>
+                </div>
+                <!-- API Key Form Crypto -->
+                <div style="margin-top:1rem; border:1px solid #444; border-radius:4px; padding:0.6rem;">
+                    <div style="font-size:1.0rem;color:#c0a878;margin-bottom:0.5rem;">🔑 Add Crypto Key</div>
+                    <input type="text" id="apiLabel_Crypto" placeholder="Label (e.g., My Coinbase)" style="width:100%;padding:0.4rem;background:#2c2c2c;border:1px solid #555;color:#fff;border-radius:4px;font-size:0.85rem;margin-bottom:0.4rem;">
+                    <input type="text" id="apiKey_Crypto" placeholder="API Key" style="width:100%;padding:0.4rem;background:#2c2c2c;border:1px solid #555;color:#fff;border-radius:4px;font-size:0.85rem;margin-bottom:0.4rem;">
+                    <input type="password" id="apiSecret_Crypto" placeholder="API Secret" style="width:100%;padding:0.4rem;background:#2c2c2c;border:1px solid #555;color:#fff;border-radius:4px;font-size:0.85rem;margin-bottom:0.4rem;">
+                    <input type="text" id="apiPassphrase_Crypto" placeholder="Passphrase (optional)" style="width:100%;padding:0.4rem;background:#2c2c2c;border:1px solid #555;color:#fff;border-radius:4px;font-size:0.85rem;margin-bottom:0.4rem;">
+                    <button onclick="saveApiKey('Crypto')" style="padding:0.35rem 0.7rem;background:#c0a878;border:none;border-radius:3px;color:#1a1a1a;font-weight:bold;">Save Key</button>
+                    <span id="apiStatus_Crypto" style="margin-left:0.5rem;font-size:0.85rem;color:#888;"></span>
+                </div>
+                <!-- API Key Form Crypto -->
+                <div style="margin-top:1rem; border:1px solid #444; border-radius:4px; padding:0.6rem;">
+                    <div style="font-size:1.0rem;color:#c0a878;margin-bottom:0.5rem;">🔑 Add Crypto Key</div>
+                    <input type="text" id="apiLabel_Crypto" placeholder="Label (e.g., My Coinbase)" style="width:100%;padding:0.4rem;background:#2c2c2c;border:1px solid #555;color:#fff;border-radius:4px;font-size:0.85rem;margin-bottom:0.4rem;">
+                    <input type="text" id="apiKey_Crypto" placeholder="API Key" style="width:100%;padding:0.4rem;background:#2c2c2c;border:1px solid #555;color:#fff;border-radius:4px;font-size:0.85rem;margin-bottom:0.4rem;">
+                    <input type="password" id="apiSecret_Crypto" placeholder="API Secret" style="width:100%;padding:0.4rem;background:#2c2c2c;border:1px solid #555;color:#fff;border-radius:4px;font-size:0.85rem;margin-bottom:0.4rem;">
+                    <input type="text" id="apiPassphrase_Crypto" placeholder="Passphrase (optional)" style="width:100%;padding:0.4rem;background:#2c2c2c;border:1px solid #555;color:#fff;border-radius:4px;font-size:0.85rem;margin-bottom:0.4rem;">
+                    <button onclick="saveApiKey('Crypto')" style="padding:0.35rem 0.7rem;background:#c0a878;border:none;border-radius:3px;color:#1a1a1a;font-weight:bold;">Save Key</button>
+                    <span id="apiStatus_Crypto" style="margin-left:0.5rem;font-size:0.85rem;color:#888;"></span>
+                </div>
+</div>
                     <div style="margin-top:0.6rem;display:flex;gap:0.4rem;">
                         <input type="text" id="cryptoFeedbackInput" placeholder="Add feedback for crypto strategy..." style="flex:1;padding:0.4rem;background:#2c2c2c;border:1px solid #555;color:#fff;border-radius:4px;font-size:0.85rem;" onkeypress="if(event.key==='Enter') refineCrypto()">
                         <button class="btn" onclick="refineCrypto()" style="flex-shrink:0;">✨ Refine</button>
@@ -355,8 +530,38 @@ DASHBOARD_HTML = """<!DOCTYPE html>
             <div id="tab-email" class="panel" style="display:none;">
                 <div style="text-align:center;padding:2rem;color:#888;">
                     <div style="font-size:2rem;">📧</div>
-                    <div>Email integration is under development.</div>
+                <!-- API Key Form Email -->
+                <div style="margin-top:1rem; border:1px solid #444; border-radius:4px; padding:0.6rem;">
+                    <div style="font-size:1.0rem;color:#c0a878;margin-bottom:0.5rem;">🔑 Add Email Key</div>
+                    <input type="text" id="apiLabel_Email" placeholder="Label (e.g., My Coinbase)" style="width:100%;padding:0.4rem;background:#2c2c2c;border:1px solid #555;color:#fff;border-radius:4px;font-size:0.85rem;margin-bottom:0.4rem;">
+                    <input type="text" id="apiKey_Email" placeholder="API Key" style="width:100%;padding:0.4rem;background:#2c2c2c;border:1px solid #555;color:#fff;border-radius:4px;font-size:0.85rem;margin-bottom:0.4rem;">
+                    <input type="password" id="apiSecret_Email" placeholder="API Secret" style="width:100%;padding:0.4rem;background:#2c2c2c;border:1px solid #555;color:#fff;border-radius:4px;font-size:0.85rem;margin-bottom:0.4rem;">
+                    <input type="text" id="apiPassphrase_Email" placeholder="Passphrase (optional)" style="width:100%;padding:0.4rem;background:#2c2c2c;border:1px solid #555;color:#fff;border-radius:4px;font-size:0.85rem;margin-bottom:0.4rem;">
+                    <button onclick="saveApiKey('Email')" style="padding:0.35rem 0.7rem;background:#c0a878;border:none;border-radius:3px;color:#1a1a1a;font-weight:bold;">Save Key</button>
+                    <span id="apiStatus_Email" style="margin-left:0.5rem;font-size:0.85rem;color:#888;"></span>
                 </div>
+                    <div>Email integration is under development.</div>
+                                <!-- API Key Form Email -->
+                <div style="margin-top:1rem; border:1px solid #444; border-radius:4px; padding:0.6rem;">
+                    <div style="font-size:1.0rem;color:#c0a878;margin-bottom:0.5rem;">🔑 Add Email Key</div>
+                    <input type="text" id="apiLabel_Email" placeholder="Label (e.g., My Coinbase)" style="width:100%;padding:0.4rem;background:#2c2c2c;border:1px solid #555;color:#fff;border-radius:4px;font-size:0.85rem;margin-bottom:0.4rem;">
+                    <input type="text" id="apiKey_Email" placeholder="API Key" style="width:100%;padding:0.4rem;background:#2c2c2c;border:1px solid #555;color:#fff;border-radius:4px;font-size:0.85rem;margin-bottom:0.4rem;">
+                    <input type="password" id="apiSecret_Email" placeholder="API Secret" style="width:100%;padding:0.4rem;background:#2c2c2c;border:1px solid #555;color:#fff;border-radius:4px;font-size:0.85rem;margin-bottom:0.4rem;">
+                    <input type="text" id="apiPassphrase_Email" placeholder="Passphrase (optional)" style="width:100%;padding:0.4rem;background:#2c2c2c;border:1px solid #555;color:#fff;border-radius:4px;font-size:0.85rem;margin-bottom:0.4rem;">
+                    <button onclick="saveApiKey('Email')" style="padding:0.35rem 0.7rem;background:#c0a878;border:none;border-radius:3px;color:#1a1a1a;font-weight:bold;">Save Key</button>
+                    <span id="apiStatus_Email" style="margin-left:0.5rem;font-size:0.85rem;color:#888;"></span>
+                </div>
+                <!-- API Key Form Email -->
+                <div style="margin-top:1rem; border:1px solid #444; border-radius:4px; padding:0.6rem;">
+                    <div style="font-size:1.0rem;color:#c0a878;margin-bottom:0.5rem;">🔑 Add Email Key</div>
+                    <input type="text" id="apiLabel_Email" placeholder="Label (e.g., My Gmail)" style="width:100%;padding:0.4rem;background:#2c2c2c;border:1px solid #555;color:#fff;border-radius:4px;font-size:0.85rem;margin-bottom:0.4rem;">
+                    <input type="text" id="apiKey_Email" placeholder="API Key" style="width:100%;padding:0.4rem;background:#2c2c2c;border:1px solid #555;color:#fff;border-radius:4px;font-size:0.85rem;margin-bottom:0.4rem;">
+                    <input type="password" id="apiSecret_Email" placeholder="API Secret" style="width:100%;padding:0.4rem;background:#2c2c2c;border:1px solid #555;color:#fff;border-radius:4px;font-size:0.85rem;margin-bottom:0.4rem;">
+                    <input type="text" id="apiPassphrase_Email" placeholder="Passphrase (optional)" style="width:100%;padding:0.4rem;background:#2c2c2c;border:1px solid #555;color:#fff;border-radius:4px;font-size:0.85rem;margin-bottom:0.4rem;">
+                    <button onclick="saveApiKey('Email')" style="padding:0.35rem 0.7rem;background:#c0a878;border:none;border-radius:3px;color:#1a1a1a;font-weight:bold;">Save Key</button>
+                    <span id="apiStatus_Email" style="margin-left:0.5rem;font-size:0.85rem;color:#888;"></span>
+                </div>
+</div>
             </div>
         </div>
     </div>
@@ -618,6 +823,42 @@ DASHBOARD_HTML = """<!DOCTYPE html>
             const resp = await fetch('/command', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({command:'/lake ' + q}) });
             const data = await resp.json();
             document.getElementById('lakeSearchResults').textContent = data.reply || 'No results found.';
+        }
+    
+        async function saveApiKeys() {
+            const key = document.getElementById('coinbaseKey').value.trim();
+            const secret = document.getElementById('coinbaseSecret').value.trim();
+            const passphrase = document.getElementById('coinbasePassphrase').value.trim();
+            if (!key || !secret) { alert('API Key and Secret are required.'); return; }
+            const status = document.getElementById('apiStatus');
+            status.textContent = 'Saving...';
+            const resp = await fetch('/update_config', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({coinbase_api_key:key, coinbase_api_secret:secret, coinbase_passphrase:passphrase}) });
+            const data = await resp.json();
+            status.textContent = data.message;
+            if (data.status === 'ok') {
+                document.getElementById('coinbaseKey').value = '';
+                document.getElementById('coinbaseSecret').value = '';
+                document.getElementById('coinbasePassphrase').value = '';
+            }
+        }
+    
+        async function saveApiKey(module) {
+            const label = document.getElementById('apiLabel_' + module).value.trim();
+            const key = document.getElementById('apiKey_' + module).value.trim();
+            const secret = document.getElementById('apiSecret_' + module).value.trim();
+            const passphrase = document.getElementById('apiPassphrase_' + module).value.trim();
+            if (!label || !key || !secret) { alert('Label, Key, and Secret are required.'); return; }
+            const status = document.getElementById('apiStatus_' + module);
+            status.textContent = 'Saving...';
+            const resp = await fetch('/add_api_key', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({label, key, secret, passphrase, module}) });
+            const data = await resp.json();
+            status.textContent = data.message;
+            if (data.status === 'ok') {
+                document.getElementById('apiLabel_' + module).value = '';
+                document.getElementById('apiKey_' + module).value = '';
+                document.getElementById('apiSecret_' + module).value = '';
+                document.getElementById('apiPassphrase_' + module).value = '';
+            }
         }
     </script>
 </body>
