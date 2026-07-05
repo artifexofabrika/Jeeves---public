@@ -16,6 +16,11 @@ CHAT_ID = int(os.getenv("CHAT_ID", "0"))
 # Alpaca
 ALPACA_API_KEY = os.getenv("ALPACA_API_KEY")
 ALPACA_SECRET_KEY = os.getenv("ALPACA_SECRET_KEY")
+# Coinbase
+COINBASE_API_KEY = os.getenv("COINBASE_API_KEY")
+COINBASE_API_SECRET = os.getenv("COINBASE_API_SECRET")
+COINBASE_PASSPHRASE = os.getenv("COINBASE_PASSPHRASE", "")
+
 # Web search
 WEB_SEARCH_ENABLED = os.getenv("WEB_SEARCH_ENABLED", "false").lower() == "true"
 WEB_SEARCH_PROVIDER = os.getenv("WEB_SEARCH_PROVIDER", "")

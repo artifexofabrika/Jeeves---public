@@ -84,7 +84,14 @@ def main():
     lake_context = ""
     snippets = lake_utils.query_lake("crypto market outlook", n=2)
     if snippets:
-        lake_context += "\n".join(snippets)
+        if snippets:
+                flat = []
+                for s in snippets:
+                    if isinstance(s, list):
+                        flat.extend(s)
+                    else:
+                        flat.append(s)
+                lake_context += "\n".join(str(item) for item in flat)
 
     prompt = f"""You are a disciplined crypto trading advisor. Analyze the following data against the user's strategy and recommend a trade in JSON format.
 

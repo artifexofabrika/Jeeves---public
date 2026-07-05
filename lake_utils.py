@@ -64,16 +64,30 @@ def query_lake(query, n=3, semantic_weight=0.5, threshold=0.6):
             exact_docs.add(d)
 
     scored = []
+    # Domain-specific terms that receive an exact-match boost
+    DOMAIN_TERMS = [
+        "treasury wine estates", "twe", "continuous improvement", "kaizen", "lean manufacturing",
+        "bitcoin", "etf", "btc", "eth", "cryptocurrency", "blockchain",
+        "alpaca", "paper trading", "strategy", "portfolio", "dividend", "options",
+        "revenue", "profit", "loss", "balance sheet", "income statement", "cash flow"
+    ]
+    domain_boost = 0.0
+    lower_query = query.lower()
+    for term in DOMAIN_TERMS:
+        if term in lower_query:
+            domain_boost = 0.15  # substantial boost for domain terms
+            break
+
     # Score semantic results
     for doc, dist in zip(docs, distances):
         kw = _keyword_overlap(query, doc)
-        combined = semantic_weight * dist + (1.0 - semantic_weight) * (1.0 - kw)
+        combined = semantic_weight * dist + (1.0 - semantic_weight) * (1.0 - kw) - domain_boost
         scored.append((combined, doc))
 
     # Add exact matches with a very good score (0.0 = best)
     for doc in exact_docs:
         kw = _keyword_overlap(query, doc)
-        combined = semantic_weight * 0.1 + (1.0 - semantic_weight) * (1.0 - kw)  # strongly prefer exact matches
+        combined = semantic_weight * 0.1 + (1.0 - semantic_weight) * (1.0 - kw) - domain_boost  # strongly prefer exact matches
         scored.append((combined, doc))
 
     scored.sort(key=lambda x: x[0])

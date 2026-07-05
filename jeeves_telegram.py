@@ -87,6 +87,31 @@ def main():
                     text = msg.get("text", "")
                     print(f"Received: {text}")
                     if text and chat_id == CHAT_ID:
+                        if text.strip().lower() == '/halt':
+                            import os as _os
+                            halt_file = _os.path.expanduser("~/coinbase_halt.signal")
+                            with open(halt_file, "w") as hf:
+                                hf.write("halt")
+                            send_message("🛑 Halting Coinbase advisor. No further trades will execute.")
+                            continue
+
+                        # Intercept /approve for the Coinbase advisor
+                        if text.lower().startswith('/approve'):
+                            import os as _os
+                            parts = text.split()
+                            if len(parts) > 1:
+                                approved_ids = []
+                                for part in parts[1:]:
+                                    # strip any punctuation, just in case
+                                    aid = part.strip(',;:')
+                                    signal_file = _os.path.expanduser(f"~/coinbase_approve_{aid}.signal")
+                                    with open(signal_file, "w") as sf:
+                                        sf.write("approved")
+                                    approved_ids.append(aid)
+                                send_message(f"Approval signals sent for trades: {', '.join(approved_ids)}.")
+                            else:
+                                send_message("Please include the approval ID, e.g., /approve abc123 def456")
+                            continue
                         response = process_message(text)
                         send_message(response)
                     elif text:

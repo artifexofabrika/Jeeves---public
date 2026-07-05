@@ -207,6 +207,32 @@ def log_wellness():
     lake_utils.store_wellness_entry(full_entry)
     return jsonify({'status': 'ok', 'reply': f"Logged: {message}"})
 
+
+
+# --- Recent Trades ---
+@dashboard_bp.route("/recent_trades")
+def recent_trades():
+    """Return the last 10 paper trades from Alpaca and CoinGecko simulators."""
+    trades = []
+    # Alpaca trades
+    try:
+        import trading_advisor
+        # Alpaca does not keep a local trade log; we fetch order history from the API
+        orders = trading_advisor.get_orders() if hasattr(trading_advisor, 'get_orders') else []
+        for o in orders[-5:]:
+            trades.append(f"[ALPACA] {o.get('side','?').upper()} {o.get('qty','?')} {o.get('symbol','?')} @ ${o.get('filled_avg_price','?')} ({o.get('status','?')})")
+    except Exception as e:
+        trades.append(f"Alpaca unavailable: {e}")
+    # Crypto simulated trades
+    try:
+        import crypto_sim, json
+        data = crypto_sim._load()
+        for t in data.get("trades", [])[-5:]:
+            trades.append(f"[CRYPTO] {t.get('side','?').upper()} {t.get('qty','?')} {t.get('symbol','?')} @ ${t.get('price','?')} ({t.get('timestamp','?')})")
+    except Exception as e:
+        trades.append(f"Crypto sim unavailable: {e}")
+    return "\n".join(trades) if trades else "No recent trades."
+
 DASHBOARD_HTML = """<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -284,9 +310,22 @@ DASHBOARD_HTML = """<!DOCTYPE html>
             </div>
             <div id="tab-trading" class="panel" style="display:none;padding:0.4rem;white-space:normal;margin-bottom:0;">
                 <!-- Sub-tab buttons -->
-                <div style="display:flex;gap:0.3rem;margin-bottom:0;">
+                <div style="display:flex;gap:0.3rem;margin-bottom:0.4rem;">
                     <button class="tab active" data-subtab="stocks" onclick="showSubTab('stocks')">📈 Stocks</button>
                     <button class="tab" data-subtab="crypto" onclick="showSubTab('crypto')">🪙 Crypto</button>
+                </div>
+                <!-- Recent Trades box (always visible) -->
+                <div style="margin-bottom:0.6rem; border:1px solid #444; border-radius:4px; padding:0.6rem;">
+                    <div style="font-size:1.0rem;color:#c0a878;margin-bottom:0.3rem;">Recent Trades</div>
+                    <div id="recentTrades" style="background:#1e1e1e;padding:0.4rem;border-radius:4px;min-height:2rem;max-height:100px;overflow-y:auto;white-space:pre-wrap;font-size:0.85rem;">Loading...</div>
+<!-- Lake Search for Trading -->
+                <div style="margin-bottom:0.6rem; border:1px solid #444; border-radius:4px; padding:0.6rem;">
+                    <div style="font-size:1.0rem;color:#c0a878;margin-bottom:0.3rem;">Search Lake for Trading Ideas</div>
+                    <input type="text" id="lakeSearchInput" placeholder="e.g., AAPL analysis or Bitcoin outlook..." style="width:100%;padding:0.4rem;background:#2c2c2c;border:1px solid #555;color:#fff;border-radius:4px;font-size:0.85rem;margin-bottom:0.4rem;" onkeypress="if(event.key==='Enter') searchLakeForTrading()">
+                    <button onclick="searchLakeForTrading()" style="padding:0.35rem 0.7rem;background:#c0a878;border:none;border-radius:3px;color:#1a1a1a;font-weight:bold;">Search Lake</button>
+                    <div id="lakeSearchResults" style="background:#1e1e1e;padding:0.4rem;border-radius:4px;min-height:2rem;max-height:150px;overflow-y:auto;white-space:pre-wrap;font-size:0.85rem;margin-top:0.4rem;"></div>
+                </div>
+
                 </div>
                 <!-- Stocks sub-panel -->
                 <div id="subtrading-stocks" style="display:block;">
@@ -458,6 +497,7 @@ DASHBOARD_HTML = """<!DOCTYPE html>
 
         // ==================== Trading ====================
         async function loadTradingModule() {
+            loadRecentTrades();
             document.getElementById('stockStrategySummary').textContent = await fetchCommand('/crypto-strat_summary') || 'No stock strategy.';
             document.getElementById('cryptoStrategySummary').textContent = await fetchCommand('/crypto-strat_summary') || 'No crypto strategy.';
         }
@@ -538,6 +578,7 @@ DASHBOARD_HTML = """<!DOCTYPE html>
         }
         // --- Load module content ---
         async function loadTradingModule() {
+            loadRecentTrades();
             // Stock strategy
             const stockResp = await fetch('/trading_summary');
             document.getElementById('stockStrategySummary').textContent = await stockResp.text() || 'No stock strategy.';
@@ -563,6 +604,20 @@ DASHBOARD_HTML = """<!DOCTYPE html>
             const data = await resp.json();
             status.textContent = data.reply;
             setTimeout(() => { status.textContent = ''; }, 3000);
+        }
+    
+        async function loadRecentTrades() {
+            const resp = await fetch('/recent_trades');
+            const text = await resp.text();
+            document.getElementById('recentTrades').textContent = text || 'No recent trades.';
+        }
+    
+        async function searchLakeForTrading() {
+            const q = document.getElementById('lakeSearchInput').value.trim();
+            if (!q) return;
+            const resp = await fetch('/command', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({command:'/lake ' + q}) });
+            const data = await resp.json();
+            document.getElementById('lakeSearchResults').textContent = data.reply || 'No results found.';
         }
     </script>
 </body>
