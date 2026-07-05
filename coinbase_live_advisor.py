@@ -49,6 +49,23 @@ def get_price(symbol):
     except:
         return None
 
+
+def get_base_precision(symbol):
+    """Return the allowed decimal precision for a given symbol."""
+    precisions = {
+        "BTC": 8,
+        "ETH": 8,
+        "SOL": 4,
+        "USDT": 2,
+        "PEPE": 0,   # PEPE is whole units
+    }
+    return precisions.get(symbol.upper(), 2)
+
+def round_qty(symbol, qty):
+    """Round quantity to the exchange-allowed precision."""
+    decimals = get_base_precision(symbol)
+    return round(qty, decimals)
+
 def place_market_order(symbol, qty, side):
     """Place a live market order. Returns (order_id, error_message)."""
     try:
@@ -57,7 +74,7 @@ def place_market_order(symbol, qty, side):
             client_order_id=f"jeeves_{int(time.time())}",
             product_id=clean_sym + "-USD",
             side=side.upper(),
-            base_size=str(qty)
+            base_size=str(round_qty(symbol, qty))
         )
         # The response is a CreateOrderResponse object; convert to dict
         order_dict = order.__dict__ if hasattr(order, '__dict__') else {}

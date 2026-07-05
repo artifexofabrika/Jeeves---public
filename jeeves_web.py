@@ -398,25 +398,39 @@ def chat():
             import chromadb
             ef = chromadb.utils.embedding_functions.SentenceTransformerEmbeddingFunction(model_name="all-MiniLM-L6-v2")
             client = chromadb.PersistentClient(path="/mnt/lake/index")
-            collection = client.get_or_create_collection(name="memory_lake", embedding_function=ef)
-            all_data = collection.get()
+            # Free-text wellness logs
+            mem_collection = client.get_or_create_collection(name="memory_lake", embedding_function=ef)
+            all_data = mem_collection.get()
             docs = all_data.get('documents', [])
             metas = all_data.get('metadatas', [])
             entries = [d for d, m in zip(docs, metas) if m and m.get('filename') == 'wellness_log.txt']
-            if entries:
-                try:
-                    entries.sort(key=lambda x: x.split(':')[0] if ':' in x else '')
-                except:
-                    pass
-                log_text = "\n".join(entries[-10:])
-                # Extract the actual question after the trigger phrase
+            # Structured wellness data
+            try:
+                data_collection = client.get_collection(name="wellness_data")
+                structured_data = data_collection.get()
+                structured_docs = structured_data.get('documents', [])
+            except:
+                structured_docs = []
+
+            if entries or structured_docs:
+                log_text = ""
+                if entries:
+                    try:
+                        entries.sort(key=lambda x: x.split(':')[0] if ':' in x else '')
+                    except:
+                        pass
+                    log_text = "\n".join(entries[-10:])
+                data_text = ""
+                if structured_docs:
+                    data_text = "\n".join(structured_docs[-20:])
+                combined = (log_text + "\n" + data_text).strip()
                 query_part = user_msg
                 for phrase in ['for wellness', 'in the wellness module']:
                     idx = lower_msg.find(phrase)
                     if idx != -1:
                         query_part = user_msg[idx+len(phrase):].strip().lstrip(',: ')
                         break
-                prompt = f"You are a helpful wellness assistant. Using ONLY the wellness log entries below, answer the user's question. You may count occurrences, summarise, and estimate nutritional values using your general knowledge. Be brief and conversational. Do not add disclaimers.\n\nWellness log:\n{log_text}\n\nUser question: {query_part}"
+                prompt = f"You are a helpful wellness assistant. Using ONLY the wellness data below, answer the user's question. You may count occurrences, summarise, and estimate nutritional values using your general knowledge. Be brief and conversational. Do not add disclaimers.\n\nWellness data:\n{combined}\n\nUser question: {query_part}"
                 reply = ask_llm(prompt)
                 return jsonify({'reply': reply})
             else:
@@ -424,7 +438,7 @@ def chat():
         except Exception as e:
             return jsonify({'reply': f"Wellness retrieval error: {e}"})
 
-    # ---- Operating manual ----
+# ---- Operating manual ----
     if 'in your operating manual' in lower_msg or 'in the operating manual' in lower_msg:
             try:
                 query_part = user_msg
@@ -809,8 +823,6 @@ from wellness_module import wellness_bp
 app.register_blueprint(wellness_bp)
 from dashboard_module import dashboard_bp
 app.register_blueprint(dashboard_bp)
-from settings_module import settings_bp
-app.register_blueprint(settings_bp)
 if __name__ == "__main__":
     print("Jeeves web interface starting on http://0.0.0.0:5000")
     app.run(host="0.0.0.0", port=5000, debug=False, ssl_context=("/home/jeeves/ssl/cert.pem", "/home/jeeves/ssl/key.pem"))
