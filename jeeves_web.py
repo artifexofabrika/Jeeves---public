@@ -555,8 +555,8 @@ def handle_command(user_input):
     elif cmd == "/persona":
         try:
             with open(PERSONA_FILE, "r") as f:
-                persona_text = f.read().strip().replace('\n', ' ')
-            return "Current persona: " + persona_text.replace("{AI_NAME}", config.AI_NAME)
+                persona_text = f.read().strip()
+            return persona_text.replace("{AI_NAME}", config.AI_NAME)
         except Exception as e:
             return f"Unable to read persona file: {e}"
     # Email (stubbed)

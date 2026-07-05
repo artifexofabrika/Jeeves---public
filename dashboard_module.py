@@ -257,6 +257,34 @@ def live_crypto_account():
     except Exception as e:
         return f"Coinbase live account unavailable: {e}"
 
+
+@dashboard_bp.route("/update_strategy", methods=["POST"])
+def update_strategy():
+    """Directly overwrite a strategy file with the provided text."""
+    data = request.get_json()
+    module = data.get("module", "")  # "stocks" or "crypto"
+    text = data.get("text", "")
+    if module not in ("stocks", "crypto") or not text.strip():
+        return jsonify({"status":"error","message":"Invalid request."}), 400
+    import config
+    path = config.TRADING_STRATEGY_FILE if module == "stocks" else config.CRYPTO_STRATEGY_FILE
+    with open(path, "w") as f:
+        f.write(text.strip())
+    return jsonify({"status":"ok","message":"Strategy saved."})
+
+
+@dashboard_bp.route("/update_persona", methods=["POST"])
+def update_persona():
+    """Directly overwrite the persona file with the provided text."""
+    data = request.get_json()
+    text = data.get("text", "").strip()
+    if not text:
+        return jsonify({"status":"error","message":"Persona text cannot be empty."}), 400
+    import config
+    with open(config.PERSONA_FILE, "w") as f:
+        f.write(text)
+    return jsonify({"status":"ok","message":"Persona saved."})
+
 DASHBOARD_HTML = """<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -316,8 +344,10 @@ DASHBOARD_HTML = """<!DOCTYPE html>
         <!-- Persona -->
         <div id="tab-persona" class="panel" style="display:block;">
             <div class="section">
-                <h2>Current Persona</h2>
+                <h2>Current Persona <button class="btn" onclick="togglePersonaEdit()" style="font-size:0.8rem;padding:0.2rem 0.4rem;">✏️ Edit</button></h2>
                 <div id="personaSummary" style="white-space:pre-wrap;min-height:3rem;">Loading...</div>
+                <textarea id="personaEdit" style="display:none;width:100%;min-height:8rem;" placeholder="Write your persona here..."></textarea>
+                <button id="personaSaveBtn" class="btn" onclick="savePersonaDirect()" style="display:none;">💾 Save Persona</button>
             </div>
             <div class="section">
                 <h2>Mirror Feedback</h2>
@@ -360,8 +390,10 @@ DASHBOARD_HTML = """<!DOCTYPE html>
         <!-- Stocks -->
         <div id="tab-stocks" class="panel" style="display:none;">
             <div class="section">
-                <h2>Stock Strategy</h2>
+                <h2>Stock Strategy <button class="btn" onclick="toggleEdit('stock')" style="font-size:0.8rem;padding:0.2rem 0.4rem;">✏️ Edit</button></h2>
                 <div id="stockStrategy" style="white-space:pre-wrap;min-height:3rem;">Loading...</div>
+                <textarea id="stockStrategyEdit" style="display:none;width:100%;min-height:8rem;" placeholder="Write your strategy here..."></textarea>
+                <button id="stockSaveBtn" class="btn" onclick="saveStrategy('stock')" style="display:none;">💾 Save Strategy</button>
                 <input type="text" id="stockFeedback" placeholder="Strategy feedback...">
                 <button class="btn" onclick="refineStocks()">✨ Refine</button>
             </div>
@@ -374,8 +406,10 @@ DASHBOARD_HTML = """<!DOCTYPE html>
         <!-- Crypto -->
         <div id="tab-crypto" class="panel" style="display:none;">
             <div class="section">
-                <h2>Crypto Strategy</h2>
+                <h2>Crypto Strategy <button class="btn" onclick="toggleEdit('crypto')" style="font-size:0.8rem;padding:0.2rem 0.4rem;">✏️ Edit</button></h2>
                 <div id="cryptoStrategy" style="white-space:pre-wrap;min-height:3rem;">Loading...</div>
+                <textarea id="cryptoStrategyEdit" style="display:none;width:100%;min-height:8rem;" placeholder="Write your strategy here..."></textarea>
+                <button id="cryptoSaveBtn" class="btn" onclick="saveStrategy('crypto')" style="display:none;">💾 Save Strategy</button>
                 <input type="text" id="cryptoFeedback" placeholder="Strategy feedback...">
                 <button class="btn" onclick="refineCrypto()">✨ Refine</button>
             </div>
@@ -653,7 +687,63 @@ async function fetchCommand(cmd) {
 }
 
 window.onload = function() { showTab('persona'); };
-</script>
+
+        function toggleEdit(module) {
+            const display = document.getElementById(module + 'Strategy');
+            const textarea = document.getElementById(module + 'StrategyEdit');
+            const saveBtn = document.getElementById(module + 'SaveBtn');
+            if (textarea.style.display === 'none') {
+                textarea.value = display.textContent.trim();
+                textarea.style.display = 'block';
+                display.style.display = 'none';
+                saveBtn.style.display = 'inline-block';
+            } else {
+                textarea.style.display = 'none';
+                display.style.display = 'block';
+                saveBtn.style.display = 'none';
+            }
+        }
+        async function saveStrategy(module) {
+            const textarea = document.getElementById(module + 'StrategyEdit');
+            const text = textarea.value.trim();
+            if (!text) { alert('Strategy cannot be empty.'); return; }
+            const resp = await fetch('/update_strategy', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({module, text}) });
+            const data = await resp.json();
+            if (data.status === 'ok') {
+                document.getElementById(module + 'Strategy').textContent = text;
+                toggleEdit(module);
+            }
+            alert(data.message);
+        }
+    
+        function togglePersonaEdit() {
+            const display = document.getElementById('personaSummary');
+            const textarea = document.getElementById('personaEdit');
+            const saveBtn = document.getElementById('personaSaveBtn');
+            if (textarea.style.display === 'none') {
+                textarea.value = display.textContent.trim();
+                textarea.style.display = 'block';
+                display.style.display = 'none';
+                saveBtn.style.display = 'inline-block';
+            } else {
+                textarea.style.display = 'none';
+                display.style.display = 'block';
+                saveBtn.style.display = 'none';
+            }
+        }
+        async function savePersonaDirect() {
+            const textarea = document.getElementById('personaEdit');
+            const text = textarea.value.trim();
+            if (!text) { alert('Persona cannot be empty.'); return; }
+            const resp = await fetch('/update_persona', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({text}) });
+            const data = await resp.json();
+            if (data.status === 'ok') {
+                document.getElementById('personaSummary').textContent = text;
+                togglePersonaEdit();
+            }
+            alert(data.message);
+        }
+    </script>
 </body>
 </html>"""
 
