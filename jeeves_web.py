@@ -861,14 +861,19 @@ app.register_blueprint(dashboard_bp)
 @app.route('/api/recent_trades')
 def api_recent_trades():
     import trade_logger, strategy_parser
-    limits = strategy_parser.parse_limits()
-    trades = trade_logger.get_recent_trades(limits.get("DASHBOARD_TRADE_COUNT", 20))
+    market = request.args.get('market', 'crypto')
+    if market == 'stocks':
+        strat_file = os.path.expanduser('~/trading_strategy.txt')
+    else:
+        strat_file = os.path.expanduser('~/crypto_sim_strategy.txt')
+    limits = strategy_parser.parse_limits(strat_file)
+    trades = trade_logger.get_recent_trades(limits.get('DASHBOARD_TRADE_COUNT', 20), market=market)
     return jsonify({
-        "trades": trades,
-        "max_order_usd": limits["MAX_ORDER_USD"],
-        "daily_trade_limit": limits["DAILY_TRADE_LIMIT"],
-        "max_daily_loss": limits["MAX_DAILY_LOSS"],
-        "trades_today": trade_logger.trades_today()
+        'trades': trades,
+        'max_order_usd': limits['MAX_ORDER_USD'],
+        'daily_trade_limit': limits['DAILY_TRADE_LIMIT'],
+        'max_daily_loss': limits['MAX_DAILY_LOSS'],
+        'trades_today': trade_logger.trades_today(market=market)
     })
 
 if __name__ == "__main__":

@@ -1,6 +1,7 @@
 import requests, json, os, datetime, time, sys, re
 import config
 import mirror_engine
+import trade_logger, strategy_parser, lake_utils
 
 LLM_URL = config.LLM_URL
 ALPACA_BASE = "https://paper-api.alpaca.markets"
@@ -8,9 +9,9 @@ API_KEY = config.ALPACA_API_KEY
 SECRET_KEY = config.ALPACA_SECRET_KEY
 STRATEGY_FILE = config.TRADING_STRATEGY_FILE
 MIRROR_LOG = config.TRADING_MIRROR_LOG
-MAX_DAILY_TRADES = 5           # total trades per day
-MAX_ORDER_VALUE = 10000        # dollars per order (increased from original 5000)
-MAX_DAILY_LOSS = 0.05          # 5% of equity max loss per day
+# MAX_DAILY_TRADES = 5           # total trades per day
+# MAX_ORDER_VALUE = 10000        # dollars per order (increased from original 5000)
+# MAX_DAILY_LOSS = 0.05          # 5% of equity max loss per day
 KILL_SWITCH_FILE = os.path.expanduser("~/trading_kill_switch")
 TELEGRAM_BOT_TOKEN = config.BOT_TOKEN
 CHAT_ID = config.CHAT_ID
@@ -227,13 +228,32 @@ If no trade, set action to "hold" and quantity to 0."""
                         if price is None:
                             log("Cannot fetch price.")
                             return
+                        if trade_logger.trades_today(market="stocks") >= MAX_DAILY_TRADES:
+                            log("Daily trade limit reached. Skipping.")
+                            return
                         if price * qty > MAX_ORDER_VALUE:
                             log(f"Order value exceeds limit. Skipping.")
                             return
                         # Place the order
-                        order = place_order(symbol, qty, action)
+                        order = place_order(symbol, round(qty, 4), action)
                         if "id" in order:
                             log(f"Order executed: {action} {qty} {symbol} - {rationale}")
+                            # Log trade to history and lake
+                            trade_record = {
+                                "trade_id": str(order.get("id", "")),
+                                "timestamp": datetime.datetime.now().isoformat(),
+                                "pair": symbol,
+                                "side": action,
+                                "quantity": str(qty),
+                                "price": str(price),
+                                "total": str(round(price * qty, 2)),
+                                "status": "filled",
+                                "market": "stocks",
+                                "metadata": {"rationale": rationale}
+                            }
+                            trade_logger.log_trade(trade_record)
+                            lake_utils.ingest_trade(trade_record)
+
                             send_telegram(f"Trading Advisor: {action.upper()} {qty} {symbol}. {rationale}")
                         else:
                             log(f"Order failed: {order}")
@@ -249,4 +269,12 @@ If no trade, set action to "hold" and quantity to 0."""
         log(f"Advisor error: {e}")
 
 if __name__ == "__main__":
+    # Parse limits from stock strategy file
+    limits = strategy_parser.parse_limits(os.path.expanduser("~/trading_strategy.txt"))
+    global MAX_DAILY_TRADES, MAX_ORDER_VALUE, MAX_DAILY_LOSS
+    MAX_DAILY_TRADES = limits["DAILY_TRADE_LIMIT"]
+    MAX_ORDER_VALUE = limits["MAX_ORDER_USD"]
+    MAX_DAILY_LOSS = limits["MAX_DAILY_LOSS"]
+    print(f"Stock limits loaded: max_order=${MAX_ORDER_VALUE}, daily_limit={MAX_DAILY_TRADES}, max_loss={MAX_DAILY_LOSS}")
+
     main()
