@@ -222,7 +222,7 @@ def main():
                         send_telegram(info_msg)
 
                         log("Autonomous mode – executing immediately.")
-                        order_id, error_msg = place_market_order(symbol, qty, action)
+                        order_id, error_msg = place_market_order(symbol, round(qty, 6), action)
                         if order_id:
                             # Log trade to history and lake
                             trade_record = {
