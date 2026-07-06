@@ -229,3 +229,34 @@ def store_raw_message(user_msg):
         )
     except:
         pass
+
+# --- Trade ingestion (added for live trading memory) ---
+def ingest_trade(trade_dict):
+    """Insert a trade record into the memory lake as a searchable chunk."""
+    import datetime
+    trade_id = trade_dict.get("trade_id", "unknown")
+    chunk_id = f"trade-{trade_id}"
+    timestamp = trade_dict.get("timestamp", datetime.datetime.now().isoformat())
+    pair = trade_dict.get("pair", "")
+    side = trade_dict.get("side", "")
+    quantity = trade_dict.get("quantity", "")
+    price = trade_dict.get("price", "")
+    total = trade_dict.get("total", "")
+    status = trade_dict.get("status", "")
+
+    text = (
+        f"[{timestamp}] Trade: {side.upper()} {quantity} {pair} @ ${price} USDT. "
+        f"Total ${total}. Order {trade_id}. Status: {status}."
+    )
+    metadata = {
+        "source": "coinbase_trade",
+        "pair": pair,
+        "side": side,
+        "timestamp": timestamp,
+        "trade_id": trade_id
+    }
+    try:
+        # idempotent upsert via the existing collection helper
+        add_chunk(chunk_id, text, metadata)
+    except Exception as e:
+        print(f"Lake ingestion failed for trade {trade_id}: {e}")

@@ -1,15 +1,17 @@
 import os, datetime, json, requests, time
 from coinbase.rest import RESTClient
 import config
+import strategy_parser, trade_logger
+import lake_utils
 
 client = RESTClient(
     api_key=config.COINBASE_API_KEY,
     api_secret=config.COINBASE_API_SECRET
 )
 
-MAX_ORDER_VALUE = 10.0
-MAX_DAILY_LOSS  = 5.0
-MAX_TRADES_PER_DAY = 1
+# MAX_ORDER_VALUE = 10.0
+# MAX_DAILY_LOSS  = 5.0
+# MAX_TRADES_PER_DAY = 1
 
 STRATEGY_FILE = config.CRYPTO_STRATEGY_FILE
 MIRROR_LOG    = os.path.expanduser("~/coinbase_mirror.log")
@@ -222,6 +224,21 @@ def main():
                         log("Autonomous mode – executing immediately.")
                         order_id, error_msg = place_market_order(symbol, qty, action)
                         if order_id:
+                            # Log trade to history and lake
+                            trade_record = {
+                                "trade_id": str(order_id),
+                                "timestamp": datetime.datetime.now().isoformat(),
+                                "pair": symbol + "-USDT",
+                                "side": action,
+                                "quantity": str(qty),
+                                "price": str(round(order_value / qty, 2)) if qty else "0",
+                                "total": str(round(order_value, 2)),
+                                "status": "filled",
+                                "metadata": {"rationale": rationale}
+                            }
+                            trade_logger.log_trade(trade_record)
+                            lake_utils.ingest_trade(trade_record)
+
                             send_telegram("Trade executed: " + action.upper() + " " + str(qty) + " " + symbol + "-USD. Order ID: " + str(order_id))
                         else:
                             send_telegram("Trade failed: " + str(error_msg))
@@ -235,4 +252,16 @@ def main():
         log("Advisor error: " + str(e))
 
 if __name__ == "__main__":
+    # Read trading limits from strategy file
+    limits = strategy_parser.parse_limits()
+    MAX_ORDER_USD = limits["MAX_ORDER_USD"]
+    DAILY_TRADE_LIMIT = limits["DAILY_TRADE_LIMIT"]
+    print(f"Limits loaded: max_order=${MAX_ORDER_USD}, daily_limit={DAILY_TRADE_LIMIT} trades")
+    # Assign parsed limits to the variable names used throughout the script
+    global MAX_ORDER_VALUE, MAX_DAILY_LOSS, MAX_TRADES_PER_DAY
+    MAX_ORDER_VALUE = limits["MAX_ORDER_USD"]
+    MAX_DAILY_LOSS = limits["MAX_DAILY_LOSS"]
+    MAX_TRADES_PER_DAY = limits["DAILY_TRADE_LIMIT"]
+
+
     main()

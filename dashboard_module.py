@@ -417,6 +417,15 @@ DASHBOARD_HTML = """<!DOCTYPE html>
                 <h2>Coinbase Account</h2>
                 <div style="margin-bottom:0.5rem;"><strong>Live Coinbase:</strong></div><div id="cryptoAccount" style="white-space:pre-wrap;">Loading...</div><div style="margin-top:0.5rem;"><strong>Paper Sim:</strong></div><div id="cryptoPaperAccount" style="white-space:pre-wrap;">Loading...</div>
             </div>
+            <!-- Recent Trades (Crypto) -->
+            <div class="section" style="margin-top:1rem;">
+                <h2>Recent Trades <span style="font-weight:normal;font-size:0.9rem;" id="guardrails-display"></span></h2>
+                <table id="recent-trades-table" style="width:100%;border-collapse:collapse;">
+                    <thead><tr><th>Time</th><th>Pair</th><th>Side</th><th>Qty</th><th>Total</th></tr></thead>
+                    <tbody><tr><td colspan="5">Loading...</td></tr></tbody>
+                </table>
+            </div>
+
         </div>
 
         <!-- Email -->
@@ -534,7 +543,7 @@ function showTab(name) {
     });
     if (name === 'persona') { loadPersona(); updateBottomBar('persona'); }
     else if (name === 'stocks') { loadStocks(); updateBottomBar('stocks'); }
-    else if (name === 'crypto') { loadCrypto(); updateBottomBar('crypto'); }
+    else if (name === 'crypto') { loadCrypto(); loadRecentTrades(); updateBottomBar('crypto'); }
     else updateBottomBar(name);
 }
 function updateBottomBar(tab) {
@@ -743,6 +752,37 @@ window.onload = function() { showTab('persona'); };
             }
             alert(data.message);
         }
+
+        // Recent Trades (Crypto) – auto-refresh every 15 min
+        var recentTradesTimer = null;
+        async function loadRecentTrades() {
+            try {
+                var res = await fetch("/api/recent_trades");
+                var data = await res.json();
+                var guard = document.getElementById("guardrails-display");
+                if (guard) {
+                    guard.textContent = '(Max order $' + data.max_order_usd.toFixed(2) + ' | Daily limit ' + data.daily_trade_limit + ' | Today ' + data.trades_today + '/' + data.daily_trade_limit + ')';
+                }
+                var tbody = document.querySelector("#recent-trades-table tbody");
+                if (!tbody) return;
+                tbody.innerHTML = '';
+                if (!data.trades || data.trades.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="5">No trades yet.</td></tr>';
+                    return;
+                }
+                data.trades.forEach(function(t) {
+                    var ts = t.timestamp ? t.timestamp.slice(0,16) : '';
+                    var row = tbody.insertRow();
+                    row.innerHTML = '<td>' + ts + '</td><td>' + t.pair + '</td><td>' + t.side + '</td><td>' + t.quantity + '</td><td>$' + parseFloat(t.total).toFixed(2) + '</td>';
+                });
+            } catch(e) { console.error(e); }
+        }
+        function startRecentTradesRefresh() {
+            if (recentTradesTimer) clearInterval(recentTradesTimer);
+            loadRecentTrades();
+            recentTradesTimer = setInterval(loadRecentTrades, 900000);
+        }
+        startRecentTradesRefresh();
     </script>
 </body>
 </html>"""

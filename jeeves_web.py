@@ -857,6 +857,20 @@ from wellness_module import wellness_bp
 app.register_blueprint(wellness_bp)
 from dashboard_module import dashboard_bp
 app.register_blueprint(dashboard_bp)
+
+@app.route('/api/recent_trades')
+def api_recent_trades():
+    import trade_logger, strategy_parser
+    limits = strategy_parser.parse_limits()
+    trades = trade_logger.get_recent_trades(limits.get("DASHBOARD_TRADE_COUNT", 20))
+    return jsonify({
+        "trades": trades,
+        "max_order_usd": limits["MAX_ORDER_USD"],
+        "daily_trade_limit": limits["DAILY_TRADE_LIMIT"],
+        "max_daily_loss": limits["MAX_DAILY_LOSS"],
+        "trades_today": trade_logger.trades_today()
+    })
+
 if __name__ == "__main__":
     print("Jeeves web interface starting on http://0.0.0.0:5000")
     app.run(host="0.0.0.0", port=5000, debug=False, ssl_context=("/home/jeeves/ssl/cert.pem", "/home/jeeves/ssl/key.pem"))
