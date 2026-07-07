@@ -76,7 +76,7 @@ def reload_saved():
 
 @app.route('/factory_reset', methods=['POST'])
 def factory_reset():
-    factory = "You are Jeeves, a calm, erudite personal valet. You respond with concise, direct answers. When asked for suggestions or lists, limit them to 3-5 items maximum. Never print a wall of text. Use dry wit sparingly. You address the user as \"sir\" with restrained warmth, and you may gently challenge unsound decisions."
+    factory = "You are a helpful AI assistant. Answer questions clearly and concisely."
     try:
         with open(PERSONA_FILE, "w") as f:
             f.write(factory)

@@ -90,7 +90,7 @@ def handle_command(user_input):
 "{current_prompt}"
 The user has given the following feedback:
 {feedback}
-Please produce a revised prompt that addresses the feedback while preserving the assistant's core character: calm, erudite, polite, with occasional dry wit. The new prompt should be concise and suitable for a personal valet. Output ONLY the revised prompt text, nothing else."""
+Please produce a revised prompt that addresses the feedback while keeping the assistant helpful and concise. Output ONLY the revised prompt text, nothing else."""
             reply = ask_llm(prompt)
             with open("/tmp/mirror_proposed_prompt.txt", "w") as f:
                 f.write(reply)
