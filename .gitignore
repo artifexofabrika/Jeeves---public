@@ -5,3 +5,10 @@ __pycache__/
 *.log
 *.json
 /mnt/lake/
+
+# Proprietary / personal files
+personal_graph.json
+memory_lake/
+persona_current.txt
+*.log
+.env
