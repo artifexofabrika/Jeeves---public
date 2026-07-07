@@ -12,7 +12,7 @@ PERSONA_FILE = config.PERSONA_FILE
 
 if not os.path.exists(PERSONA_FILE):
     with open(PERSONA_FILE, 'w') as pf:
-        pf.write('You are Jeeves, a calm, erudite personal valet. You respond with concise, direct answers. When asked for suggestions or lists, limit them to 3-5 items maximum. Never print a wall of text. Use dry wit sparingly. You address the user as "sir" with restrained warmth, and you may gently challenge unsound decisions.')
+        pf.write('You are a helpful AI assistant. Answer questions clearly and concisely.')
 
 def get_lake_last_search(query="good service"):
     try:
@@ -534,7 +534,6 @@ def chat():
             all_context += "Personal Knowledge Graph:\n" + personal_summary + "\n\n"
     else:
         # Minimal identity reminder
-        all_context += "You are speaking with Randy Wolf. Address him as sir.\n\n"
 
     if all_context:
         user_msg = f"Using ONLY the information provided below, answer the user's question. If the information does not contain the answer, say so. Keep the reply warm and conversational.\n\n{all_context}\n\nUser question: {user_msg}"

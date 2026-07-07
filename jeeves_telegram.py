@@ -46,7 +46,7 @@ def ask_jeeves(question):
         with open(persona_file, 'r') as f:
             persona = f.read().strip()
     except:
-        persona = "You are " + config.AI_NAME + ", a calm, erudite personal valet."
+        persona = "You are a helpful AI assistant."
     resp = requests.post(LLM_URL, json={
         "model": "llama",
         "messages": [
