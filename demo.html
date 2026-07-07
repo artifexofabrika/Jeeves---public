@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jeeves – Open‑Source Demo</title>
+    <link rel="icon" type="image/png" href="favicon.png">
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #1a1a1a; color: #d4d4d4; height: 100vh; display: flex; flex-direction: column; }
+        .demo-banner { background: #c0a878; color: #1a1a1a; text-align: center; padding: 0.5rem; font-weight: bold; font-size: 0.9rem; }
+        .top-bar { height: 45%; display: flex; flex-direction: column; border-bottom: 1px solid #444; background: #1e1e1e; }
+        .top-bar .chat-messages { flex: 1; overflow-y: auto; padding: 0.6rem; font-size: 0.9rem; }
+        .top-bar .chat-input { display: flex; padding: 0.4rem; background: #2c2c2c; }
+        .top-bar .chat-input input { flex: 1; padding: 0.4rem; background: #3c3c3c; border: 1px solid #555; color: #fff; border-radius: 4px; font-size: 0.85rem; }
+        .top-bar .chat-input button { padding: 0.4rem 0.8rem; margin-left: 0.4rem; background: #c0a878; border: none; border-radius: 4px; cursor: pointer; color: #1a1a1a; font-weight: bold; font-size: 0.85rem; }
+        .middle-area { height: 45%; display: flex; flex-direction: column; background: #1e1e1e; }
+        .tab-buttons { display: flex; flex-wrap: wrap; gap: 0.2rem; padding: 0.3rem 0.6rem; background: #2c2c2c; }
+        .tab { background: #3c3c3c; border: 1px solid #555; color: #d4d4d4; padding: 0.3rem 0.5rem; border-radius: 3px; cursor: pointer; font-size: 0.8rem; }
+        .tab.active { background: #c0a878; color: #1a1a1a; border-color: #c0a878; }
+        .tab-content { flex: 1; overflow-y: auto; padding: 0.6rem; }
+        .bottom-bar { height: 10%; display: flex; align-items: center; gap: 0.4rem; padding: 0 0.6rem; background: #2c2c2c; }
+        .bottom-bar button { padding: 0.35rem 0.7rem; background: #3c3c3c; border: 1px solid #555; color: #d4d4d4; border-radius: 3px; cursor: pointer; font-size: 0.8rem; }
+        .panel { margin-bottom: 0.8rem; }
+        .section { background: #2c2c2c; border: 1px solid #444; border-radius: 4px; padding: 0.6rem; margin-bottom: 0.6rem; }
+        .section h2 { font-size: 1.0rem; color: #c0a878; margin-bottom: 0.4rem; }
+        input, textarea { width: 100%; padding: 0.4rem; margin-bottom: 0.4rem; background: #3c3c3c; border: 1px solid #555; color: #fff; border-radius: 4px; font-size: 0.85rem; font-family: inherit; }
+        .btn { padding: 0.35rem 0.7rem; background: #c0a878; border: none; border-radius: 3px; color: #1a1a1a; font-weight: bold; cursor: pointer; font-size: 0.85rem; margin-right: 0.3rem; }
+        .status { font-size: 0.8rem; color: #888; margin-left: 0.5rem; }
+        .message { margin-bottom: 0.4rem; }
+        .message.user { text-align: right; color: #a0c0ff; }
+        .message.jeeves { text-align: left; color: #c0a878; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 0.3rem; border-bottom: 1px solid #444; text-align: left; font-size: 0.85rem; }
+    </style>
+</head>
+<body>
+<div class="demo-banner">This is a static demonstration of the open‑source Jeeves interface. The full product includes a proprietary, crafted persona and a pre‑built knowledge lake. <a href="https://www.indiegogo.com/projects/jeeves-private-ai-valet" style="color:#1a1a1a;font-weight:bold;">Back the campaign →</a></div>
+
+<div class="top-bar">
+    <div class="chat-messages" id="messages"><div class="message jeeves">Good day. I am the Jeeves demonstration assistant. How may I help you?</div></div>
+    <div class="chat-input">
+        <input type="text" id="userInput" placeholder="Speak to the demo valet..." onkeypress="if(event.key==='Enter') sendMessage()">
+        <button onclick="sendMessage()">Send</button>
+    </div>
+</div>
+
+<div class="middle-area">
+    <div class="tab-buttons">
+        <button class="tab active" data-tab="persona" onclick="showTab('persona')">👤 Persona</button>
+        <button class="tab" data-tab="wellness" onclick="showTab('wellness')">💚 Wellness</button>
+        <button class="tab" data-tab="datalake" onclick="showTab('datalake')">🌊 Data Lake</button>
+        <button class="tab" data-tab="stocks" onclick="showTab('stocks')">📈 Stocks</button>
+        <button class="tab" data-tab="crypto" onclick="showTab('crypto')">🪙 Crypto</button>
+        <button class="tab" data-tab="email" onclick="showTab('email')">📧 Email</button>
+        <button class="tab" data-tab="settings" onclick="showTab('settings')">⚙️ Settings</button>
+    </div>
+    <div class="tab-content">
+        <div id="tab-persona" class="panel" style="display:block;">
+            <div class="section">
+                <h2>Current Persona <button class="btn" onclick="alert('Edit mode is disabled in the demo.')">✏️ Edit</button></h2>
+                <div style="white-space:pre-wrap;">You are a helpful AI assistant. Answer questions clearly and concisely.</div>
+                <textarea style="display:none;"></textarea>
+            </div>
+            <div class="section">
+                <h2>Mirror Feedback</h2>
+                <input type="text" placeholder="Feedback for the Mirror...">
+                <button class="btn" onclick="alert('Mirror refinement is available in the full product.')">✨ Refine</button>
+            </div>
+        </div>
+
+        <div id="tab-wellness" class="panel" style="display:none;">
+            <div class="section">
+                <h2>Quick Log</h2>
+                <input type="text" placeholder="e.g., add to wellness I had 4 eggs">
+                <button class="btn" onclick="alert('Wellness logging is available in the full product.')">📝 Log</button>
+            </div>
+            <div class="section">
+                <h2>Upload Fitness Data</h2>
+                <div class="drop-zone" style="border:2px dashed #555;border-radius:6px;padding:1rem;text-align:center;color:#888;">📁 Drop CSV/JSON or click (demo only)</div>
+            </div>
+        </div>
+
+        <div id="tab-datalake" class="panel" style="display:none;">
+            <div class="section">
+                <h2>Lake Search</h2>
+                <input type="text" placeholder="Search your knowledge lake...">
+                <button class="btn" onclick="alert('Knowledge lake search is disabled in the demo.')">🔍 Search</button>
+                <div style="margin-top:0.5rem;">Sample result: "Your knowledge lake is empty in this demo."</div>
+            </div>
+        </div>
+
+        <div id="tab-stocks" class="panel" style="display:none;">
+            <div class="section">
+                <h2>Stock Strategy <button class="btn" onclick="alert('Edit mode is disabled in the demo.')">✏️ Edit</button></h2>
+                <div style="white-space:pre-wrap;"># Limits
+MAX_ORDER_USD = 5000
+DAILY_TRADE_LIMIT = 5
+MAX_DAILY_LOSS = 0.05
+
+# Strategy
+Buy large-cap stocks when they dip 5% in a week and sell when they gain 8%.</div>
+            </div>
+            <div class="section">
+                <h2>Alpaca Account (Paper)</h2>
+                <div>Portfolio Value: $102,610.27</div>
+                <div>Cash: $45,389.73</div>
+                <div>Holdings: AAPL 800 shares | Value $245,000.00 | P/L +$5,817.86</div>
+            </div>
+            <div class="section">
+                <h2>Recent Trades</h2>
+                <table>
+                    <tr><th>Time</th><th>Symbol</th><th>Side</th><th>Qty</th><th>Total</th></tr>
+                    <tr><td>2026-07-06 09:30</td><td>AAPL</td><td>buy</td><td>100</td><td>$19,250.00</td></tr>
+                    <tr><td>2026-07-05 14:15</td><td>MSFT</td><td>sell</td><td>50</td><td>$16,400.00</td></tr>
+                </table>
+            </div>
+        </div>
+
+        <div id="tab-crypto" class="panel" style="display:none;">
+            <div class="section">
+                <h2>Crypto Strategy <button class="btn" onclick="alert('Edit mode is disabled in the demo.')">✏️ Edit</button></h2>
+                <div style="white-space:pre-wrap;"># Limits
+MAX_ORDER_USD = 10
+DAILY_TRADE_LIMIT = 20
+MAX_DAILY_LOSS = 5.0
+
+# Strategy
+Buy when the 7-day trend is positive and sell when it turns negative.</div>
+            </div>
+            <div class="section">
+                <h2>Coinbase Account</h2>
+                <div>Live: BTC 0.12 | ETH 0.5 | USDT 400.00</div>
+                <div>Paper: BTC 1.2 | ETH 3.5 | USDT 2,500.00</div>
+            </div>
+            <div class="section">
+                <h2>Recent Trades</h2>
+                <table>
+                    <tr><th>Time</th><th>Pair</th><th>Side</th><th>Qty</th><th>Total</th></tr>
+                    <tr><td>2026-07-06 08:15</td><td>BTC-USDT</td><td>buy</td><td>0.001</td><td>$6.50</td></tr>
+                    <tr><td>2026-07-06 07:45</td><td>SOL-USDT</td><td>sell</td><td>0.5</td><td>$12.25</td></tr>
+                </table>
+            </div>
+        </div>
+
+        <div id="tab-email" class="panel" style="display:none;">
+            <div class="section">
+                <h2>Email (Coming Soon)</h2>
+                <div style="color:#888;">Read, summarise, and draft emails with your approval. Available in the full product.</div>
+            </div>
+        </div>
+
+        <div id="tab-settings" class="panel" style="display:none;">
+            <div class="section">
+                <h2>API Keys</h2>
+                <input type="password" placeholder="API Key (demo only)" value="••••••••">
+                <input type="password" placeholder="API Secret" value="••••••••">
+                <button class="btn" onclick="alert('API key management is available in the full product.')">Save Key</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="bottom-bar">
+    <button onclick="alert('Functionality available in the full product.')">💾 Save</button>
+    <button onclick="alert('Functionality available in the full product.')">📂 Reload</button>
+    <button onclick="alert('Functionality available in the full product.')">⚠️ Reset</button>
+</div>
+
+<script>
+    function showTab(name) {
+        document.querySelectorAll('.tab-content > div').forEach(el => el.style.display = 'none');
+        document.getElementById('tab-' + name).style.display = 'block';
+        document.querySelectorAll('.tab-buttons .tab').forEach(btn => btn.classList.remove('active'));
+        document.querySelector('[data-tab="' + name + '"]').classList.add('active');
+    }
+
+    function sendMessage() {
+        const input = document.getElementById('userInput');
+        const text = input.value.trim();
+        if (!text) return;
+        addMessage('user', text);
+        input.value = '';
+        setTimeout(() => {
+            const replies = [
+                "That's an interesting question. In the full product, I would search your knowledge lake for a detailed answer.",
+                "I'm running in demonstration mode. The complete Jeeves confidant can trade, track wellness, and remember everything you tell them.",
+                "This is the open‑source base version. The crafted, warm persona is available only with the purchased unit.",
+                "I can show you the interface, but my responses are limited in this demo. The real Jeeves is far more capable.",
+                "Ask me anything, and I'll do my best with my generic assistant knowledge."
+            ];
+            const randomReply = replies[Math.floor(Math.random() * replies.length)];
+            addMessage('jeeves', randomReply);
+        }, 600);
+    }
+
+    function addMessage(sender, text) {
+        const msg = document.createElement('div');
+        msg.className = 'message ' + sender;
+        msg.textContent = text;
+        document.getElementById('messages').appendChild(msg);
+        document.getElementById('messages').scrollTop = document.getElementById('messages').scrollHeight;
+    }
+</script>
+</body>
+</html>
