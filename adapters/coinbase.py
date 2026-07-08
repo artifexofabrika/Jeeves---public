@@ -54,11 +54,16 @@ def place_order(symbol, qty, side):
             side=side.upper(),
             base_size=str(qty)
         )
-        order_dict = order.__dict__ if hasattr(order, '__dict__') else {}
-        if order_dict.get('success', False):
-            return order_dict.get('order_id', 'unknown'), None
+        # Coinbase returns a CreateOrderResponse object; extract the order ID
+        order_id = None
+        if hasattr(order, 'order_id'):
+            order_id = order.order_id
+        elif hasattr(order, '__dict__'):
+            order_id = order.__dict__.get('order_id', None)
+        if order_id:
+            return order_id, None
         else:
-            return None, str(order_dict)
+            return None, str(order)
     except Exception as e:
         return None, str(e)
 

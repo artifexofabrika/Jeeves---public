@@ -260,3 +260,20 @@ def ingest_trade(trade_dict):
         add_chunk(chunk_id, text, metadata)
     except Exception as e:
         print(f"Lake ingestion failed for trade {trade_id}: {e}")
+
+def add_chunk(chunk_id, text, metadata=None):
+    """Insert or update a single chunk into the memory lake (idempotent)."""
+    import chromadb
+    from chromadb.utils import embedding_functions
+    # Use the existing collection settings
+    client = chromadb.PersistentClient(path=os.path.expanduser("~/chroma_db"))
+    collection = client.get_or_create_collection(
+        name="memory_lake",
+        embedding_function=embedding_functions.SentenceTransformerEmbeddingFunction(model_name="all-MiniLM-L6-v2")
+    )
+    # Upsert the chunk
+    collection.upsert(
+        ids=[chunk_id],
+        documents=[text],
+        metadatas=[metadata or {}]
+    )
