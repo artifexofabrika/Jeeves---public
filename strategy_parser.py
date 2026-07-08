@@ -39,7 +39,7 @@ def parse_limits(filepath=None):
             if key in ("MAX_ORDER_USD", "DAILY_TRADE_LIMIT", "DASHBOARD_TRADE_COUNT", "MAX_DAILY_LOSS"):
                 try:
                     if key in ("MAX_ORDER_USD", "MAX_DAILY_LOSS"):
-                        limits["MAX_ORDER_USD"] = float(value)
+                        limits[key] = float(value)
                     else:
                         limits[key] = int(value)
                 except ValueError:
