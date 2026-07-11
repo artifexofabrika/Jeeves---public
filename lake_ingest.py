@@ -1,167 +1,131 @@
-import os as _os
-from dotenv import load_dotenv
-load_dotenv(_os.path.expanduser('~/Beeker-mk1/.env'))
-if _os.getenv('HF_TOKEN'):
-    _os.environ['HF_TOKEN'] = _os.getenv('HF_TOKEN')
-from dotenv import load_dotenv
-load_dotenv()
-#!/usr/bin/env python3
 """
-Jeeves Knowledge Lake Ingest
-- Reads files from LAKE_INBOX_DIR (default ~/lake_inbox)
-- Splits text into chunks with overlap
-- Embeds chunks locally (no LLM)
-- Stores in ChromaDB collection 'memory_lake'
-- Skips already ingested files (by SHA256 hash)
-- Throttles with a configurable delay
+lake_ingest.py – Clean, universal ingestion pipeline for Jeeves.
+Chunks text, tags with Phi‑3‑mini, stores in the new memory_lake collection.
 """
-
-import os, sys, json, hashlib, time, datetime
-from pathlib import Path
+import re
+import datetime
+import uuid
+import requests
 import chromadb
 from chromadb.utils import embedding_functions
 
-# ---------- Configuration ----------
-INBOX_DIR = os.path.expanduser(os.getenv("LAKE_INBOX_DIR", "~/lake_inbox"))
-CHUNK_SIZE = 1000          # characters per chunk
-CHUNK_OVERLAP = 200        # character overlap
-INGEST_DELAY = float(os.getenv("LAKE_INGEST_DELAY", "0.5"))  # seconds between chunks
-INGESTED_DB = os.path.expanduser("~/lake_ingested.json")
-LAKE_INDEX_PATH = os.path.expanduser(os.getenv("LAKE_INDEX_PATH", "/mnt/lake/index"))
-LOG_FILE = os.path.expanduser("~/lake_ingest.log")
+# Constants
+CHUNK_SIZE = 500          # max characters per chunk
+CHUNK_OVERLAP = 50        # characters of overlap between chunks
+LLM_URL = "http://127.0.0.1:8081/v1/chat/completions"
+COLLECTION_NAME = "memory_lake"
+DB_PATH = "/mnt/lake/index"
 
-# Ensure inbox exists
-os.makedirs(INBOX_DIR, exist_ok=True)
-os.makedirs(LAKE_INDEX_PATH, exist_ok=True)
-
-# ---------- ChromaDB Setup ----------
-embedding_fn = embedding_functions.SentenceTransformerEmbeddingFunction(
+# Embedding function – must match what the collection was created with
+EMBED_FN = embedding_functions.SentenceTransformerEmbeddingFunction(
     model_name="all-MiniLM-L6-v2"
 )
-client = chromadb.PersistentClient(path=LAKE_INDEX_PATH)
-collection = client.get_or_create_collection(
-    name="memory_lake",
-    embedding_function=embedding_fn
-)
 
-# ---------- Utility Functions ----------
-def log(msg):
-    timestamp = datetime.datetime.now().isoformat()
-    line = f"{timestamp} | {msg}"
-    print(line)
-    with open(LOG_FILE, "a") as f:
-        f.write(line + "\n")
+def _get_collection():
+    """Return the ChromaDB collection, creating it if needed with the correct embedding function."""
+    client = chromadb.PersistentClient(path=DB_PATH)
+    try:
+        collection = client.get_collection(COLLECTION_NAME)
+    except Exception:
+        # Collection doesn't exist yet, create it
+        collection = client.create_collection(
+            name=COLLECTION_NAME,
+            embedding_function=EMBED_FN
+        )
+    return collection
 
-def file_hash(filepath):
-    """Return SHA256 hex digest of file."""
-    h = hashlib.sha256()
-    with open(filepath, "rb") as f:
-        for chunk in iter(lambda: f.read(65536), b""):
-            h.update(chunk)
-    return h.hexdigest()
+def _split_text(text):
+    """
+    Split text into coherent chunks of at most CHUNK_SIZE characters,
+    with CHUNK_OVERLAP overlap, respecting sentence boundaries where possible.
+    """
+    sentences = re.split(r'(?<=[.!?])\s+', text)
+    chunks = []
+    current = ""
+    for sentence in sentences:
+        if len(current) + len(sentence) <= CHUNK_SIZE:
+            current = (current + " " + sentence).strip()
+        else:
+            if current:
+                chunks.append(current)
+            # Start new chunk with overlap: take the last few words of the previous chunk
+            if chunks:
+                last_chunk = chunks[-1]
+                overlap_words = " ".join(last_chunk.split()[-5:])  # roughly 50 chars
+                current = overlap_words + " " + sentence
+            else:
+                current = sentence
+    if current:
+        chunks.append(current)
+    return chunks
 
-def load_ingested_db():
-    if os.path.exists(INGESTED_DB):
-        with open(INGESTED_DB, "r") as f:
-            return json.load(f)
-    return {}
+def _generate_tags(chunk_text):
+    """Ask Phi‑3‑mini to generate 3‑5 keywords for a chunk of text."""
+    prompt = (
+        "You are a keyword generator. Given a piece of text, list 3‑5 relevant keywords "
+        "separated by commas. Only output the keywords, nothing else.\n\n"
+        f"Text: {chunk_text[:300]}\nKeywords:"
+    )
+    try:
+        resp = requests.post(
+            LLM_URL,
+            json={
+                "messages": [{"role": "user", "content": prompt}],
+                "max_tokens": 20,
+                "temperature": 0.0,
+            },
+            timeout=5
+        )
+        if resp.status_code == 200:
+            raw = resp.json()["choices"][0]["message"]["content"].strip()
+            # Clean up and return as a list
+            tags = [t.strip().lower() for t in raw.split(",") if t.strip()]
+            return tags[:5]
+    except Exception:
+        pass
+    return []
 
-def save_ingested_db(db):
-    with open(INGESTED_DB, "w") as f:
-        json.dump(db, f, indent=2)
+def ingest_text(text, source_name, tags=None):
+    """
+    Ingest a block of text into the knowledge lake.
+    - text: the full text to be chunked and stored.
+    - source_name: a label like 'chat_summary', 'web_search', 'journal'.
+    - tags: optional list of manual tags to be added to every chunk.
+    Returns the number of chunks stored.
+    """
+    if tags is None:
+        tags = []
+    collection = _get_collection()
+    chunks = _split_text(text)
+    now = datetime.datetime.now().isoformat()
+    ids = []
+    documents = []
+    metadatas = []
+    for i, chunk in enumerate(chunks):
+        # Generate AI tags for this chunk
+        ai_tags = _generate_tags(chunk)
+        all_tags = list(set(tags + ai_tags))  # combine manual and AI tags
+        chunk_id = f"{source_name}_{uuid.uuid4().hex[:8]}"
+        ids.append(chunk_id)
+        documents.append(chunk)
+        metadatas.append({
+            "source": source_name,
+            "date": now,
+            "tags": ",".join(all_tags),
+        })
+    if ids:
+        collection.add(ids=ids, documents=documents, metadatas=metadatas)
+    return len(ids)
 
-def split_text(text, size=CHUNK_SIZE, overlap=CHUNK_OVERLAP):
-    """Yield chunks of text with overlap."""
-    if len(text) <= size:
-        yield text
-        return
-    start = 0
-    while start < len(text):
-        end = start + size
-        yield text[start:end]
-        start += (size - overlap)
-
-# ---------- Main Ingestion ----------
-def main():
-    import fcntl
-    lock_path = os.path.expanduser("~/lake_ingest.lock")
-    with open(lock_path, "w") as lf:
-        try:
-            fcntl.flock(lf, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError:
-            log("Ingestion already in progress; exiting.")
-            return
-
-    log("Lake ingestion started.")
-    inbox = Path(INBOX_DIR)
-    files = list(inbox.rglob("*"))
-    if not files:
-        log("No files found in inbox.")
-        return
-
-    ingested_db = load_ingested_db()
-    total_chunks = 0
-    new_files = 0
-
-    for filepath in files:
-        if not filepath.is_file():
-            continue
-        # Only process text-like files (add more extensions as needed)
-        if filepath.suffix.lower() not in [".txt", ".md", ".csv", ".json", ".py", ".sh", ".service", ".timer", ".html", ".css", ".js", ".conf", ".yml", ".yaml", ".toml", ".ini"]:
-            continue
-
-        abs_path = str(filepath.resolve())
-        fhash = file_hash(abs_path)
-
-        if abs_path in ingested_db and ingested_db[abs_path] == fhash:
-            log(f"Skipping (unchanged): {filepath.name}")
-            continue
-
-        log(f"Ingesting: {filepath.name}")
-        try:
-            text = filepath.read_text(encoding="utf-8", errors="ignore")
-        except Exception as e:
-            log(f"  Error reading file: {e}")
-            continue
-
-        chunks = list(split_text(text))
-        log(f"  Split into {len(chunks)} chunks.")
-
-        for i, chunk in enumerate(chunks):
-            meta = {
-                "filename": filepath.name,
-                "source_path": abs_path,
-                "chunk_index": i,
-                "ingested_at": datetime.datetime.now().isoformat(),
-                "hash": fhash
-            }
-            # ChromaDB expects unique IDs; we use file hash + chunk index
-            doc_id = f"{fhash}_{i}"
-            # Avoid re-adding if already present (though full file check handles most)
-            try:
-                collection.add(
-                    documents=[chunk],
-                    metadatas=[meta],
-                    ids=[doc_id]
-                )
-            except Exception as e:
-                log(f"  Error adding chunk {i}: {e}")
-                time.sleep(1)  # brief pause on error
-                continue
-
-            if total_chunks % 10 == 0 and total_chunks > 0:
-                log(f"  Progress: {total_chunks} chunks embedded...")
-            total_chunks += 1
-            if INGEST_DELAY > 0:
-                time.sleep(INGEST_DELAY)
-
-        # Mark file as ingested
-        ingested_db[abs_path] = fhash
-        new_files += 1
-
-    save_ingested_db(ingested_db)
-    log(f"Ingestion complete. {new_files} new/updated files, {total_chunks} total chunks added.")
-    return total_chunks
-
+# ---------- quick test ----------
 if __name__ == "__main__":
-    main()
+    sample = (
+        "Sharks are a group of elasmobranch fish characterized by a cartilaginous skeleton, "
+        "five to seven gill slits on the sides of the head, and pectoral fins that are not fused to the head. "
+        "Modern sharks are classified within the clade Selachimorpha and are the sister group to the rays. "
+        "There are over 500 species of sharks, ranging in size from the small dwarf lanternshark, "
+        "a deep sea species of only 17 centimeters in length, to the whale shark, the largest fish in the world, "
+        "which reaches approximately 12 meters in length."
+    )
+    count = ingest_text(sample, "test", tags=["sharks", "marine biology"])
+    print(f"Ingested {count} chunks.")
