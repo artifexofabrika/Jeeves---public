@@ -88,7 +88,7 @@ def query_lake(query, n=3):
     import chromadb
     from chromadb.utils import embedding_functions
     ef = embedding_functions.SentenceTransformerEmbeddingFunction(model_name="all-MiniLM-L6-v2")
-    client = chromadb.PersistentClient(path="/mnt/lake/index")
+    client = chromadb.PersistentClient(path=config.LAKE_INDEX_PATH)
     collection = client.get_or_create_collection(name="memory_lake", embedding_function=ef)
     results = collection.query(query_texts=[query], n_results=n)
     return results.get("documents", [[]])[0]

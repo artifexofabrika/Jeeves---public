@@ -3,6 +3,7 @@ lake_ingest.py – Clean, universal ingestion pipeline for Jeeves.
 Chunks text, tags with Phi‑3‑mini, stores in the new memory_lake collection.
 """
 import re
+import os
 import datetime
 import uuid
 import requests
@@ -14,7 +15,7 @@ CHUNK_SIZE = 500          # max characters per chunk
 CHUNK_OVERLAP = 50        # characters of overlap between chunks
 LLM_URL = "http://127.0.0.1:8081/v1/chat/completions"
 COLLECTION_NAME = "memory_lake"
-DB_PATH = "/mnt/lake/index"
+DB_PATH = os.path.expanduser(os.getenv("LAKE_INDEX_PATH", "/mnt/lake/index"))
 
 # Embedding function – must match what the collection was created with
 EMBED_FN = embedding_functions.SentenceTransformerEmbeddingFunction(

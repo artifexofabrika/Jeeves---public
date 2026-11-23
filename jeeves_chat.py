@@ -25,7 +25,7 @@ def handle_lake_search(query):
     lake_reply = None
     try:
         ef = embedding_functions.SentenceTransformerEmbeddingFunction(model_name="all-MiniLM-L6-v2")
-        client = chromadb.PersistentClient(path="/mnt/lake/index")
+        client = chromadb.PersistentClient(path=config.LAKE_INDEX_PATH)
         collection = client.get_or_create_collection(name="memory_lake", embedding_function=ef)
         results = collection.query(query_texts=[query], n_results=3)
         docs = results.get('documents', [[]])[0]

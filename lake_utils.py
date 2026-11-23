@@ -1,5 +1,10 @@
 import re, chromadb
 from chromadb.utils import embedding_functions
+import config
+
+# Single source of truth for where the lake lives. Override with the
+# LAKE_INDEX_PATH environment variable; config.py already declares it.
+DB_PATH = config.LAKE_INDEX_PATH
 
 STOPWORDS = {
     "a", "an", "the", "and", "or", "but", "in", "on", "at", "to", "for",
@@ -47,7 +52,7 @@ def _exact_term_search(term, collection, n=5):
 
 def query_lake(query, n=3, semantic_weight=0.5, threshold=0.6):
     ef = _make_ef()
-    client = chromadb.PersistentClient(path="/mnt/lake/index")
+    client = chromadb.PersistentClient(path=DB_PATH)
     collection = client.get_or_create_collection(name="memory_lake", embedding_function=ef)
 
     # Semantic search
@@ -112,7 +117,7 @@ def _memory_ef():
 
 def _memory_collection():
     ef = _memory_ef()
-    client = chromadb.PersistentClient(path="/mnt/lake/index")
+    client = chromadb.PersistentClient(path=DB_PATH)
     return client.get_or_create_collection(name=MEMORY_COLLECTION, embedding_function=ef)
 
 def store_conversation_summary(summary):
@@ -132,7 +137,7 @@ def retrieve_conversation_context(query, n=3):
     return results.get('documents', [[]])[0]
 
 def clear_conversation_memory():
-    client = chromadb.PersistentClient(path="/mnt/lake/index")
+    client = chromadb.PersistentClient(path=DB_PATH)
     try:
         client.delete_collection(name=MEMORY_COLLECTION)
     except:
@@ -140,7 +145,7 @@ def clear_conversation_memory():
 
 def save_conversation_baseline():
     ef = _memory_ef()
-    client = chromadb.PersistentClient(path="/mnt/lake/index")
+    client = chromadb.PersistentClient(path=DB_PATH)
     try:
         client.delete_collection(name=BASELINE_COLLECTION)
     except:
@@ -160,7 +165,7 @@ def save_conversation_baseline():
 
 def restore_conversation_baseline():
     ef = _memory_ef()
-    client = chromadb.PersistentClient(path="/mnt/lake/index")
+    client = chromadb.PersistentClient(path=DB_PATH)
     try:
         baseline = client.get_collection(name=BASELINE_COLLECTION)
     except:
@@ -180,7 +185,7 @@ def restore_conversation_baseline():
     return f"Conversation baseline restored ({len(all_docs['ids'])} entries)."
 
 def memory_status():
-    client = chromadb.PersistentClient(path="/mnt/lake/index")
+    client = chromadb.PersistentClient(path=DB_PATH)
     try:
         mem = client.get_collection(name=MEMORY_COLLECTION)
         count = mem.count()
@@ -197,7 +202,7 @@ def store_wellness_entry(text):
     """Store a small text entry (e.g. meal, medication) directly into the memory lake."""
     import datetime, uuid
     ef = _make_ef()
-    client = chromadb.PersistentClient(path="/mnt/lake/index")
+    client = chromadb.PersistentClient(path=DB_PATH)
     collection = client.get_or_create_collection(name="memory_lake", embedding_function=ef)
     # For short wellness notes, store as a single chunk
     chunk = text.strip()
@@ -218,7 +223,7 @@ def store_raw_message(user_msg):
     try:
         import datetime, uuid
         ef = _make_ef()
-        client = chromadb.PersistentClient(path="/mnt/lake/index")
+        client = chromadb.PersistentClient(path=DB_PATH)
         collection = client.get_or_create_collection(name="memory_lake", embedding_function=ef)
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
         doc_id = f"chat_{timestamp}_{hash(user_msg) % 10000}"

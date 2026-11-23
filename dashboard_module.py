@@ -67,7 +67,8 @@ def wellness_upload_api():
     if not rows:
         return jsonify({"status":"error","message":"No data rows found."}), 400
     ef = embedding_functions.SentenceTransformerEmbeddingFunction(model_name="all-MiniLM-L6-v2")
-    client = chromadb.PersistentClient(path="/mnt/lake/index")
+    import config
+    client = chromadb.PersistentClient(path=config.LAKE_INDEX_PATH)
     collection = client.get_or_create_collection(name="wellness_data", embedding_function=ef)
     count = 0
     for row in rows:

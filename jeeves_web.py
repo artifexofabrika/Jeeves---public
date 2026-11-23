@@ -1,4 +1,4 @@
-import os, datetime, re, json, subprocess, requests
+import os, datetime, re, json, subprocess, requests, sys
 from flask import Flask, render_template_string, request, jsonify, send_file
 import crypto_sim, trading_advisor, config, lake_utils, web_search, personal_graph
 import chromadb
@@ -10,6 +10,16 @@ LLM_URL = config.LLM_URL
 MIRROR_LOG = config.MIRROR_LOG
 PERSONA_FILE = config.PERSONA_FILE
 
+# --- Deployment settings -------------------------------------------------
+# Env-driven so moving to a new board needs no code edit. The TLS paths
+# default to the owner's home rather than /home/jeeves, because the unit
+# runs as its owner and /home/jeeves may not exist at all.
+WEB_HOST = os.getenv("JEEVES_WEB_HOST", "0.0.0.0")
+WEB_PORT = int(os.getenv("JEEVES_WEB_PORT", "8443"))
+TLS_ENABLED = os.getenv("JEEVES_TLS_ENABLED", "true").lower() == "true"
+TLS_CERT = os.path.expanduser(os.getenv("JEEVES_TLS_CERT", "~/ssl/cert.pem"))
+TLS_KEY = os.path.expanduser(os.getenv("JEEVES_TLS_KEY", "~/ssl/key.pem"))
+
 if not os.path.exists(PERSONA_FILE):
     with open(PERSONA_FILE, 'w') as pf:
         pf.write('You are a helpful AI assistant. Answer questions clearly and concisely.')
@@ -17,7 +27,7 @@ if not os.path.exists(PERSONA_FILE):
 def get_lake_last_search(query="good service"):
     try:
         ef = embedding_functions.SentenceTransformerEmbeddingFunction(model_name="all-MiniLM-L6-v2")
-        client = chromadb.PersistentClient(path="/mnt/lake/index")
+        client = chromadb.PersistentClient(path=config.LAKE_INDEX_PATH)
         collection = client.get_or_create_collection(name="memory_lake", embedding_function=ef)
         results = collection.query(query_texts=[query], n_results=1)
         docs = results.get('documents', [[]])[0]
@@ -403,7 +413,7 @@ def chat():
         try:
             import chromadb
             ef = chromadb.utils.embedding_functions.SentenceTransformerEmbeddingFunction(model_name="all-MiniLM-L6-v2")
-            client = chromadb.PersistentClient(path="/mnt/lake/index")
+            client = chromadb.PersistentClient(path=config.LAKE_INDEX_PATH)
             # Free-text wellness logs
             mem_collection = client.get_or_create_collection(name="memory_lake", embedding_function=ef)
             result = mem_collection.get(where={"filename": "wellness_log.txt"})
@@ -876,5 +886,17 @@ def api_recent_trades():
     })
 
 if __name__ == "__main__":
-    print("Jeeves web interface starting on http://0.0.0.0:5000")
-    app.run(host="0.0.0.0", port=5000, debug=False, ssl_context=("/home/jeeves/ssl/cert.pem", "/home/jeeves/ssl/key.pem"))
+    ssl_context = None
+    if TLS_ENABLED:
+        missing = [p for p in (TLS_CERT, TLS_KEY) if not os.path.exists(p)]
+        if missing:
+            print("Jeeves cannot start: TLS is enabled but these files are missing:", file=sys.stderr)
+            for p in missing:
+                print("  " + p, file=sys.stderr)
+            print("Fix: set JEEVES_TLS_CERT and JEEVES_TLS_KEY to real certificate paths,", file=sys.stderr)
+            print("or set JEEVES_TLS_ENABLED=false for a local test over plain HTTP.", file=sys.stderr)
+            sys.exit(1)
+        ssl_context = (TLS_CERT, TLS_KEY)
+    scheme = "https" if ssl_context else "http"
+    print(f"Jeeves web interface starting on {scheme}://{WEB_HOST}:{WEB_PORT}")
+    app.run(host=WEB_HOST, port=WEB_PORT, debug=False, ssl_context=ssl_context)
