@@ -542,8 +542,7 @@ def chat():
         personal_summary = personal_graph.graph_summary()
         if personal_summary:
             all_context += "Personal Knowledge Graph:\n" + personal_summary + "\n\n"
-    else:
-        # Minimal identity reminder
+    # No else branch: the graph summary is added only for personal queries.
 
     if all_context:
         user_msg = f"Using ONLY the information provided below, answer the user's question. If the information does not contain the answer, say so. Keep the reply warm and conversational.\n\n{all_context}\n\nUser question: {user_msg}"
